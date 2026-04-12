@@ -149,6 +149,10 @@ type segPayload struct {
 }
 
 func (s *Server) handleGetJSON(c *gin.Context) {
+	ledsInfo := gin.H{
+		"count": len(s.state.LEDs()),
+		"rgbw":  s.state.IsRGBW(),
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"state": gin.H{
 			"on":   s.state.Power(),
@@ -161,9 +165,7 @@ func (s *Server) handleGetJSON(c *gin.Context) {
 			"name": "WLED Simulator",
 			"live": s.state.IsLive(),
 			"mac":  s.macAddr,
-			"leds": gin.H{
-				"count": len(s.state.LEDs()),
-			},
+			"leds": ledsInfo,
 		},
 	})
 }
@@ -177,15 +179,17 @@ func (s *Server) handleGetState(c *gin.Context) {
 }
 
 func (s *Server) handleGetInfo(c *gin.Context) {
+	ledsInfo := gin.H{
+		"count": len(s.state.LEDs()),
+		"rgbw":  s.state.IsRGBW(),
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"ver":  "simulator",
 		"ip":   "127.0.0.1",
 		"name": "WLED Simulator",
 		"live": s.state.IsLive(),
 		"mac":  s.macAddr,
-		"leds": gin.H{
-			"count": len(s.state.LEDs()),
-		},
+		"leds": ledsInfo,
 	})
 }
 
@@ -208,11 +212,17 @@ func (s *Server) handlePostState(c *gin.Context) {
 		// Get the first color from the first segment
 		col := p.Seg[0].Col[0]
 		if len(col) >= 3 {
-			// Convert RGB values to color.RGBA
 			r := uint8(col[0])
 			g := uint8(col[1])
 			b := uint8(col[2])
-			ledColor := color.RGBA{R: r, G: g, B: b, A: 255}
+			a := uint8(255)
+			if s.state.IsRGBW() {
+				a = 0 // Default W=0 in RGBW mode
+				if len(col) >= 4 {
+					a = uint8(col[3]) // Use provided W value
+				}
+			}
+			ledColor := color.RGBA{R: r, G: g, B: b, A: a}
 
 			// Set all LEDs to this color
 			leds := s.state.LEDs()

@@ -1,5 +1,7 @@
 # WLED Simulator
 
+> ⚠️ **Disclaimer**: This project is vibe coded. It was built with AI assistance for rapid prototyping and experimentation. Use at your own risk — there be dragons. 🐉
+
 A minimal but extensible desktop application that behaves like a real WLED node while running entirely on your workstation. It offers a Fyne-powered LED matrix, a WLED-compatible JSON REST API, and a full-speed DDP UDP listener, making it ideal for client development and automated integration tests.
 
 ## Features
@@ -10,6 +12,7 @@ A minimal but extensible desktop application that behaves like a real WLED node 
 * Thread-safe shared LED state with power and brightness control.
 * Command-line flags and optional `config.yaml` for easy configuration.
 * Indicators for JSON and DDP activity, green for success and red for error.
+* **Experimental RGBW support**: 4-channel LED mode via `--rgbw` flag or config, with full DDP and API support.
 
 ## Screenshot
 
@@ -41,6 +44,7 @@ Open `http://localhost:9090/json` in your browser or point your WLED mobile app 
 | `-controls` | false   | Show power/brightness controls in UI |
 | `-headless` | false   | Disable GUI for CI (API/DDP only)    |
 | `-v`        | false   | Verbose logging                      |
+| `-rgbw`     | false   | Enable experimental RGBW (4-channel) LED support |
 
 You can also create a `config.yaml` file with the same keys to persist defaults.
 
@@ -51,6 +55,7 @@ wiring: "col"
 http_address: ":9090"
 ddp_port: 4048
 init_color: "#202020"
+rgbw: false
 ```
 
 ### LED Wiring Patterns
@@ -113,6 +118,24 @@ curl http://localhost:8080/json/info
 ```
 
 The API responses include a `live` field that indicates when DDP data is actively being received (matches real WLED behavior).
+
+### RGBW Mode Testing
+
+Start the simulator with RGBW enabled:
+```bash
+go run ./cmd -rgbw -rows 5 -cols 3
+```
+
+**Set LEDs with RGBW color (white channel = 128):**
+```bash
+curl -X POST http://localhost:8080/json/state -H "Content-Type: application/json" -d '{"seg":[{"col":[[255,0,0,128]]}]}'
+```
+
+**Check RGBW is reported in device info:**
+```bash
+curl http://localhost:8080/json/info | jq '.leds'
+# {"count":15,"rgbw":true}
+```
 
 ### Manual Testing with DDP
 

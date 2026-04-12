@@ -375,7 +375,7 @@ func TestValidateHeader(t *testing.T) {
 			expectedError: "unsupported data type: HSL",
 		},
 		{
-			name: "RGBW data type not supported",
+			name: "valid RGBW header",
 			header: &DDPHeader{
 				Version:  1,
 				DeviceID: DeviceIDDefault,
@@ -386,7 +386,6 @@ func TestValidateHeader(t *testing.T) {
 					BitsPerElement: 8,
 				},
 			},
-			expectedError: "unsupported data type: RGBW",
 		},
 		{
 			name: "Grayscale data type not supported",
@@ -415,6 +414,20 @@ func TestValidateHeader(t *testing.T) {
 				},
 			},
 			expectedError: "unsupported RGB size: 16 bits per element",
+		},
+		{
+			name: "RGBW with wrong bit size",
+			header: &DDPHeader{
+				Version:  1,
+				DeviceID: DeviceIDDefault,
+				DataType: DataTypeInfo{
+					IsCustom:       false,
+					Type:           TypeRGBW,
+					Size:           Size16Bit,
+					BitsPerElement: 16,
+				},
+			},
+			expectedError: "unsupported RGBW size: 16 bits per element",
 		},
 		{
 			name: "duplicate sequence number",

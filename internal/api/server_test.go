@@ -21,10 +21,16 @@ type testState struct {
 }
 
 type testInfo struct {
-	Ver  string `json:"ver"`
-	Name string `json:"name"`
-	Live bool   `json:"live"`
-	Mac  string `json:"mac"`
+	Ver  string       `json:"ver"`
+	Name string       `json:"name"`
+	Live bool         `json:"live"`
+	Mac  string       `json:"mac"`
+	Leds testLedsInfo `json:"leds"`
+}
+
+type testLedsInfo struct {
+	Count int  `json:"count"`
+	RGBW  bool `json:"rgbw"`
 }
 
 type testCombined struct {
@@ -39,7 +45,7 @@ const (
 )
 
 func TestGetState(t *testing.T) {
-	ledState := state.NewLEDState(testLEDs, "#000000")
+	ledState := state.NewLEDState(testLEDs, "#000000", false)
 	srv := NewServer(":0", ledState, testDDPPort)
 
 	r := gin.Default()
@@ -67,7 +73,7 @@ func TestGetState(t *testing.T) {
 }
 
 func TestGetInfo(t *testing.T) {
-	ledState := state.NewLEDState(testLEDs, "#000000")
+	ledState := state.NewLEDState(testLEDs, "#000000", false)
 	srv := NewServer(":0", ledState, testDDPPort)
 
 	r := gin.Default()
@@ -99,7 +105,7 @@ func TestGetInfo(t *testing.T) {
 }
 
 func TestGetJSON(t *testing.T) {
-	ledState := state.NewLEDState(testLEDs, "#000000")
+	ledState := state.NewLEDState(testLEDs, "#000000", false)
 	srv := NewServer(":0", ledState, testDDPPort)
 
 	r := gin.Default()
@@ -136,7 +142,7 @@ func TestGetJSON(t *testing.T) {
 }
 
 func TestLiveFieldWithDDPActivity(t *testing.T) {
-	ledState := state.NewLEDState(testLEDs, "#000000")
+	ledState := state.NewLEDState(testLEDs, "#000000", false)
 	srv := NewServer(":0", ledState, testDDPPort)
 
 	r := gin.Default()
@@ -204,7 +210,7 @@ func TestMACAddressGeneration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ledState := state.NewLEDState(tt.ledCount, "#000000")
+			ledState := state.NewLEDState(tt.ledCount, "#000000", false)
 			srv := NewServer(tt.httpAddr, ledState, tt.ddpPort)
 
 			// Test MAC in /json/info endpoint
@@ -247,7 +253,7 @@ func TestMACAddressGeneration(t *testing.T) {
 func TestPortCollision(t *testing.T) {
 	// Use a specific port for testing
 	const testPort = ":8081"
-	ledState := state.NewLEDState(testLEDs, "#000000")
+	ledState := state.NewLEDState(testLEDs, "#000000", false)
 
 	// Start first server
 	srv1 := NewServer(testPort, ledState, testDDPPort)
@@ -297,7 +303,7 @@ func TestPortCollision(t *testing.T) {
 func TestNoRouteHandler(t *testing.T) {
 	// Use a specific port for testing
 	const testPort = ":8082"
-	ledState := state.NewLEDState(testLEDs, "#000000")
+	ledState := state.NewLEDState(testLEDs, "#000000", false)
 
 	// Start server
 	srv := NewServer(testPort, ledState, testDDPPort)
@@ -402,5 +408,93 @@ func TestNoRouteHandler(t *testing.T) {
 	// Cleanup
 	if err := srv.Stop(); err != nil {
 		t.Errorf("Failed to stop server: %v", err)
+	}
+}
+
+func TestRGBWInfoEndpoint(t *testing.T) {
+	// Test with RGBW mode enabled
+	ledState := state.NewLEDState(testLEDs, "#000000", true)
+	srv := NewServer(":0", ledState, testDDPPort)
+
+	r := gin.Default()
+	r.GET("/json/info", srv.handleGetInfo)
+
+	req := httptest.NewRequest(http.MethodGet, "/json/info", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w.Code)
+	}
+
+	var resp testInfo
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("bad JSON: %v", err)
+	}
+
+	if !resp.Leds.RGBW {
+		t.Fatal("expected leds.rgbw to be true in RGBW mode")
+	}
+	if resp.Leds.Count != testLEDs {
+		t.Fatalf("expected leds.count=%d, got %d", testLEDs, resp.Leds.Count)
+	}
+
+	// Test with RGB mode (default)
+	ledState2 := state.NewLEDState(testLEDs, "#000000", false)
+	srv2 := NewServer(":0", ledState2, testDDPPort)
+
+	r2 := gin.Default()
+	r2.GET("/json/info", srv2.handleGetInfo)
+
+	req2 := httptest.NewRequest(http.MethodGet, "/json/info", nil)
+	w2 := httptest.NewRecorder()
+	r2.ServeHTTP(w2, req2)
+
+	var resp2 testInfo
+	if err := json.Unmarshal(w2.Body.Bytes(), &resp2); err != nil {
+		t.Fatalf("bad JSON: %v", err)
+	}
+
+	if resp2.Leds.RGBW {
+		t.Fatal("expected leds.rgbw to be false in RGB mode")
+	}
+}
+
+func TestRGBWPostState(t *testing.T) {
+	ledState := state.NewLEDState(testLEDs, "#000000", true)
+	srv := NewServer(":0", ledState, testDDPPort)
+
+	r := gin.Default()
+	r.POST("/json/state", srv.handlePostState)
+
+	// POST with RGBW color [255, 0, 128, 64]
+	body := `{"seg":[{"col":[[255,0,128,64]]}]}`
+	req := httptest.NewRequest(http.MethodPost, "/json/state", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected status 204, got %d", w.Code)
+	}
+
+	// Verify LED color includes W channel
+	leds := ledState.LEDs()
+	if leds[0].R != 255 || leds[0].G != 0 || leds[0].B != 128 || leds[0].A != 64 {
+		t.Fatalf("expected RGBA{255,0,128,64}, got RGBA{%d,%d,%d,%d}",
+			leds[0].R, leds[0].G, leds[0].B, leds[0].A)
+	}
+
+	// POST with RGB-only color [0, 255, 0] in RGBW mode - W should default to 0
+	body2 := `{"seg":[{"col":[[0,255,0]]}]}`
+	req2 := httptest.NewRequest(http.MethodPost, "/json/state", strings.NewReader(body2))
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, req2)
+
+	leds = ledState.LEDs()
+	if leds[0].R != 0 || leds[0].G != 255 || leds[0].B != 0 || leds[0].A != 0 {
+		t.Fatalf("expected RGBA{0,255,0,0} (W=0), got RGBA{%d,%d,%d,%d}",
+			leds[0].R, leds[0].G, leds[0].B, leds[0].A)
 	}
 }

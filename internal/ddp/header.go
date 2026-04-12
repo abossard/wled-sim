@@ -193,25 +193,24 @@ func ValidateHeader(header *DDPHeader, lastSequence *uint8) error {
 		return fmt.Errorf("custom data types not supported (C bit set)")
 	}
 
-	// Check data type - we only support RGB and undefined
-	if header.DataType.Type != TypeRGB && header.DataType.Type != TypeUndefined {
+	// Check data type - we support RGB, RGBW, and undefined
+	if header.DataType.Type != TypeRGB && header.DataType.Type != TypeRGBW && header.DataType.Type != TypeUndefined {
 		typeName := "unknown"
 		switch header.DataType.Type {
 		case TypeHSL:
 			typeName = "HSL"
-		case TypeRGBW:
-			typeName = "RGBW"
 		case TypeGrayscale:
 			typeName = "Grayscale"
 		}
-		return fmt.Errorf("unsupported data type: %s (%d), only RGB (%d) and undefined (%d) supported",
-			typeName, header.DataType.Type, TypeRGB, TypeUndefined)
+		return fmt.Errorf("unsupported data type: %s (%d), only RGB (%d), RGBW (%d), and undefined (%d) supported",
+			typeName, header.DataType.Type, TypeRGB, TypeRGBW, TypeUndefined)
 	}
 
-	// For RGB data, check that we have 8 bits per element
-	if header.DataType.Type == TypeRGB {
+	// For RGB/RGBW data, check that we have 8 bits per element
+	if header.DataType.Type == TypeRGB || header.DataType.Type == TypeRGBW {
 		if header.DataType.Size != Size8Bit {
-			return fmt.Errorf("unsupported RGB size: %d bits per element (expected 8)",
+			return fmt.Errorf("unsupported %s size: %d bits per element (expected 8)",
+				map[uint8]string{TypeRGB: "RGB", TypeRGBW: "RGBW"}[header.DataType.Type],
 				header.DataType.BitsPerElement)
 		}
 	}

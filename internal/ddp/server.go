@@ -74,23 +74,42 @@ func (s *Server) processPacket(header *DDPHeader, data []byte) error {
 	// Mark that we're receiving live DDP data
 	s.state.SetLive()
 
-	// Process RGB data
+	// Process pixel data based on data type
+	bytesPerPixel := 3 // Default RGB
+	if header.DataType.Type == TypeRGBW {
+		bytesPerPixel = 4
+	}
+
 	leds := s.state.LEDs()
 	maxIndex := len(leds)
-	startIndex := int(header.DataOffset / 3) // Assuming 3 bytes per LED (RGB)
+	startIndex := int(header.DataOffset) / bytesPerPixel
 
 	pixelCount := 0
-	for i := 0; i+2 < len(payload); i += 3 {
-		ledIndex := startIndex + (i / 3)
+	for i := 0; i+bytesPerPixel-1 < len(payload); i += bytesPerPixel {
+		ledIndex := startIndex + (i / bytesPerPixel)
 		if ledIndex >= maxIndex {
 			break
 		}
-		s.state.SetLED(ledIndex, color.RGBA{
-			R: payload[i],
-			G: payload[i+1],
-			B: payload[i+2],
-			A: 255,
-		})
+		if bytesPerPixel == 4 {
+			// RGBW: store W in A field
+			s.state.SetLED(ledIndex, color.RGBA{
+				R: payload[i],
+				G: payload[i+1],
+				B: payload[i+2],
+				A: payload[i+3],
+			})
+		} else {
+			a := uint8(255)
+			if s.state.IsRGBW() {
+				a = 0 // In RGBW mode, RGB-only data has W=0
+			}
+			s.state.SetLED(ledIndex, color.RGBA{
+				R: payload[i],
+				G: payload[i+1],
+				B: payload[i+2],
+				A: a,
+			})
+		}
 		pixelCount++
 	}
 

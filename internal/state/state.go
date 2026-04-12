@@ -25,15 +25,17 @@ type LEDState struct {
 	power           bool
 	brightness      int // 0-255
 	leds            []color.RGBA
+	rgbw            bool               // RGBW mode: W channel stored in color.RGBA.A field
 	lastLiveTime    time.Time          // Timestamp of last DDP packet received
 	liveTimeout     time.Duration      // How long to consider live after last packet
 	activityChannel chan ActivityEvent // Channel for activity events
 }
 
-// NewLEDState constructs a LEDState with n LEDs initialized to hex colour
-func NewLEDState(n int, hex string) *LEDState {
+// NewLEDState constructs a LEDState with n LEDs initialized to hex colour.
+// If rgbw is true, the W channel is stored in the A field of color.RGBA.
+func NewLEDState(n int, hex string, rgbw bool) *LEDState {
 	leds := make([]color.RGBA, n)
-	c := parseHex(hex)
+	c := parseHex(hex, rgbw)
 	for i := range leds {
 		leds[i] = c
 	}
@@ -41,16 +43,26 @@ func NewLEDState(n int, hex string) *LEDState {
 		power:           true,
 		brightness:      255,
 		leds:            leds,
+		rgbw:            rgbw,
 		liveTimeout:     5 * time.Second,               // Consider live for 5 seconds after last packet
 		activityChannel: make(chan ActivityEvent, 100), // Buffered channel for activity events
 	}
 }
 
-// parseHex converts "#RRGGBB" to color.RGBA
-func parseHex(h string) color.RGBA {
+// parseHex converts "#RRGGBB" or "#RRGGBBWW" to color.RGBA.
+// In RGBW mode, the W channel is stored in the A field; otherwise A is 255.
+func parseHex(h string, rgbw bool) color.RGBA {
 	var r, g, b uint8
+	if len(h) == 9 && h[0] == '#' && rgbw {
+		var w uint8
+		_, _ = fmt.Sscanf(h[1:], "%02x%02x%02x%02x", &r, &g, &b, &w)
+		return color.RGBA{R: r, G: g, B: b, A: w}
+	}
 	if len(h) == 7 && h[0] == '#' {
 		_, _ = fmt.Sscanf(h[1:], "%02x%02x%02x", &r, &g, &b)
+	}
+	if rgbw {
+		return color.RGBA{R: r, G: g, B: b, A: 0}
 	}
 	return color.RGBA{R: r, G: g, B: b, A: 255}
 }
@@ -66,6 +78,11 @@ func (s *LEDState) Power() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.power
+}
+
+// IsRGBW returns true if this state uses RGBW mode (W stored in A field)
+func (s *LEDState) IsRGBW() bool {
+	return s.rgbw
 }
 
 func (s *LEDState) SetBrightness(b int) {

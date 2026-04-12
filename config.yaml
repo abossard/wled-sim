@@ -8,3 +8,4 @@ name: "LED Light"
 controls: true
 headless: false
 verbose: true
+rgbw: false

@@ -273,6 +273,7 @@ func (g *GUI) updateDisplay() {
 
 	// Use fyne.Do to avoid race conditions during shutdown
 	fyne.Do(func() {
+		isRGBW := g.state.IsRGBW()
 		for ledIndex, ledColor := range leds {
 			if ledIndex < len(leds) {
 				// Convert LED index to grid position based on wiring
@@ -282,7 +283,12 @@ func (g *GUI) updateDisplay() {
 				displayIndex := g.gridPositionToDisplayIndex(row, col)
 
 				if displayIndex < len(g.rectangles) {
-					g.rectangles[displayIndex].FillColor = ledColor
+					displayColor := ledColor
+					if isRGBW {
+						// In RGBW mode, A stores W channel — force full opacity for display
+						displayColor.A = 255
+					}
+					g.rectangles[displayIndex].FillColor = displayColor
 					g.rectangles[displayIndex].Refresh()
 				}
 			}

@@ -62,7 +62,7 @@ func TestFlashLight_RespectsContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	ledState := state.NewLEDState(1, "#000000")
+	ledState := state.NewLEDState(1, "#000000", false)
 	gui := NewApp(testApp, ledState, 1, 1, "row", "", false)
 
 	// Replace the GUI's context with our cancelled one
@@ -88,7 +88,7 @@ func TestConcurrentShutdown(t *testing.T) {
 	testApp := test.NewApp()
 	defer testApp.Quit()
 
-	ledState := state.NewLEDState(10, "#000000")
+	ledState := state.NewLEDState(10, "#000000", false)
 	gui := NewApp(testApp, ledState, 2, 5, "row", "", false)
 
 	// Start some activity that would normally cause GUI updates
@@ -153,7 +153,7 @@ func TestUpdateDisplay_RespectsContext(t *testing.T) {
 	testApp := test.NewApp()
 	defer testApp.Quit()
 
-	ledState := state.NewLEDState(4, "#000000")
+	ledState := state.NewLEDState(4, "#000000", false)
 	gui := NewApp(testApp, ledState, 2, 2, "row", "", false)
 
 	// Set a color to verify no update happens
@@ -184,7 +184,7 @@ func TestTimerCallbackRaceCondition(t *testing.T) {
 	testApp := test.NewApp()
 	defer testApp.Quit()
 
-	ledState := state.NewLEDState(1, "#000000")
+	ledState := state.NewLEDState(1, "#000000", false)
 	gui := NewApp(testApp, ledState, 1, 1, "row", "", false)
 
 	rect := canvas.NewRectangle(color.Black)

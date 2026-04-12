@@ -34,6 +34,7 @@ type Config struct {
 	Controls    bool   `yaml:"controls" flag:"controls"`
 	Headless    bool   `yaml:"headless" flag:"headless"`
 	Verbose     bool   `yaml:"verbose" flag:"v"`
+	RGBW        bool   `yaml:"rgbw" flag:"rgbw"`
 }
 
 func main() {
@@ -49,6 +50,7 @@ func main() {
 	flag.BoolVar(&cfg.Controls, "controls", false, "Show power/brightness controls in GUI")
 	flag.BoolVar(&cfg.Headless, "headless", false, "Run without GUI")
 	flag.BoolVar(&cfg.Verbose, "v", false, "Verbose logging")
+	flag.BoolVar(&cfg.RGBW, "rgbw", false, "Enable experimental RGBW (4-channel) LED support")
 
 	configFile := flag.String("config", "config.yaml", "Configuration file path")
 	flag.Parse()
@@ -89,7 +91,7 @@ func main() {
 	totalLEDs := cfg.Rows * cfg.Cols
 
 	// Initialize shared state
-	ledState := state.NewLEDState(totalLEDs, cfg.InitColor)
+	ledState := state.NewLEDState(totalLEDs, cfg.InitColor, cfg.RGBW)
 
 	// Setup logging
 	if cfg.Verbose {
@@ -97,6 +99,9 @@ func main() {
 	}
 
 	fmt.Printf("WLED Simulator starting with %dx%d LED matrix (%d total LEDs, %s-major wiring)\n", cfg.Rows, cfg.Cols, totalLEDs, cfg.Wiring)
+	if cfg.RGBW {
+		fmt.Println("RGBW mode enabled (experimental)")
+	}
 	fmt.Printf("HTTP API on %s\n", cfg.HTTPAddress)
 	fmt.Printf("DDP listening on port %d\n", cfg.DDPPort)
 
