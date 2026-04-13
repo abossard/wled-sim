@@ -11,13 +11,14 @@ import (
 )
 
 type Server struct {
-	port         int
-	state        *state.LEDState
-	conn         *net.UDPConn
-	ctx          context.Context
-	cancel       context.CancelFunc
-	lastSequence uint8
-	verbose      bool
+	port        int
+	state       *state.LEDState
+	conn        *net.UDPConn
+	ctx         context.Context
+	cancel      context.CancelFunc
+	lastPushSeq uint8
+	ddpSeenPush bool
+	verbose     bool
 }
 
 func NewServer(port int, s *state.LEDState) *Server {
@@ -70,9 +71,6 @@ func (s *Server) processPacket(header *DDPHeader, data []byte) error {
 		}
 		return nil
 	}
-
-	// Mark that we're receiving live DDP data
-	s.state.SetLive()
 
 	// Process pixel data based on data type
 	bytesPerPixel := 3 // Default RGB
@@ -154,32 +152,44 @@ func (s *Server) Start() error {
 				// Parse and validate header
 				header, err := ParseHeader(buf[:n])
 				if err != nil {
-					s.state.ReportActivity(state.ActivityDDP, false) // Report failed DDP activity
+					s.state.ReportActivity(state.ActivityDDP, false)
 					if s.verbose {
 						log.Printf("[DDP] Invalid packet from %s: %v", remoteAddr, err)
 					}
 					continue
 				}
 
-				// Additional validation
-				if err := ValidateHeader(header, &s.lastSequence); err != nil {
-					s.state.ReportActivity(state.ActivityDDP, false) // Report failed DDP activity
+				// Additional validation with windowed sequence check
+				if err := ValidateHeader(header, s.lastPushSeq); err != nil {
+					s.state.ReportActivity(state.ActivityDDP, false)
 					if s.verbose {
 						log.Printf("[DDP] Packet validation failed from %s: %v", remoteAddr, err)
 					}
 					continue
 				}
 
-				// Process the packet
+				// Process the packet (buffer pixel data)
 				if err := s.processPacket(header, buf[:n]); err != nil {
-					s.state.ReportActivity(state.ActivityDDP, false) // Report failed DDP activity
+					s.state.ReportActivity(state.ActivityDDP, false)
 					if s.verbose {
 						log.Printf("[DDP] Packet processing failed from %s: %v", remoteAddr, err)
 					}
 					continue
 				}
 
-				s.state.ReportActivity(state.ActivityDDP, true) // Report successful DDP activity
+				// PUSH-aware rendering matching real WLED v16 behavior:
+				// Only render on PUSH, or if we've never seen a PUSH packet.
+				push := header.Push
+				s.ddpSeenPush = s.ddpSeenPush || push
+				if !s.ddpSeenPush || push {
+					s.state.SetLive()
+					sn := header.Sequence & 0x0F
+					if sn != 0 {
+						s.lastPushSeq = sn
+					}
+				}
+
+				s.state.ReportActivity(state.ActivityDDP, true)
 			}
 		}
 	}()

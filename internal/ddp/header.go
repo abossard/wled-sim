@@ -180,8 +180,10 @@ func ParseHeader(data []byte) (*DDPHeader, error) {
 	return header, nil
 }
 
-// ValidateHeader performs additional validation on the parsed header
-func ValidateHeader(header *DDPHeader, lastSequence *uint8) error {
+// ValidateHeader performs additional validation on the parsed header.
+// lastPushSeq is the sequence number of the last PUSH packet (0 if none seen yet).
+// This matches real WLED v16's windowed late-packet rejection logic.
+func ValidateHeader(header *DDPHeader, lastPushSeq uint8) error {
 	// Check device ID
 	if header.DeviceID != DeviceIDDefault && header.DeviceID != DeviceIDAllDevices {
 		return fmt.Errorf("unsupported device ID: %d (expected %d or %d)",
@@ -215,13 +217,35 @@ func ValidateHeader(header *DDPHeader, lastSequence *uint8) error {
 		}
 	}
 
-	// Check sequence number for duplicates (if not zero)
-	if header.Sequence != 0 && lastSequence != nil {
-		if header.Sequence == *lastSequence {
-			return fmt.Errorf("duplicate sequence number: %d", header.Sequence)
-		}
-		*lastSequence = header.Sequence
+	// Windowed late-packet rejection matching real WLED v16 behavior.
+	// Only reject packets that are "too old" relative to the last push sequence.
+	// Sequence 0 means "not used" and is always accepted.
+	if err := checkSequenceWindow(header.Sequence, lastPushSeq); err != nil {
+		return err
 	}
 
+	return nil
+}
+
+// checkSequenceWindow implements WLED v16's windowed sequence rejection.
+// Sequences are 4-bit (1-15), 0 means unused. Only rejects packets within
+// a window of 5 behind lastPushSeq. Does NOT reject duplicates.
+func checkSequenceWindow(seq, lastPushSeq uint8) error {
+	if lastPushSeq == 0 {
+		return nil // no push seen yet, accept everything
+	}
+	sn := seq & 0x0F
+	if sn == 0 {
+		return nil // sequence not used, always accept
+	}
+	if lastPushSeq > 5 {
+		if sn > (lastPushSeq-5) && sn < lastPushSeq {
+			return fmt.Errorf("late packet rejected: seq %d is within window behind last push seq %d", sn, lastPushSeq)
+		}
+	} else {
+		if sn > (10+lastPushSeq) || sn < lastPushSeq {
+			return fmt.Errorf("late packet rejected: seq %d is within window behind last push seq %d (wraparound)", sn, lastPushSeq)
+		}
+	}
 	return nil
 }

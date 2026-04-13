@@ -116,10 +116,25 @@ byte 10 or 14: start of data
 
 The WLED simulator implements:
 - Version 1 of the DDP protocol
-- RGB data type (001) with 8 bits per element (011)
-- Default output device (ID=1)
+- RGB and RGBW data types with 8 bits per element
+- Default output device (ID=1) and broadcast (ID=255)
 - Packet validation with verbose error logging
-- Sequence number tracking for duplicate detection
+- **Windowed sequence rejection** matching real WLED v16: only rejects packets whose sequence falls within a window of 5 behind the last PUSH packet's sequence (not strict duplicate rejection)
+- **PUSH-aware rendering** matching real WLED v16: non-PUSH packets buffer pixel data silently; rendering only triggers on PUSH packets, or if no PUSH has ever been seen
+
+### Sequence Handling
+
+DDP sequence numbers are 4-bit (1-15), with 0 meaning "not used". The simulator tracks the sequence of the last PUSH packet (`lastPushSeq`) and rejects late packets that fall within a window of 5 behind it:
+- If `lastPushSeq > 5`: reject if `seq > (lastPushSeq - 5) && seq < lastPushSeq`
+- If `lastPushSeq <= 5`: reject with wraparound: `seq > (10 + lastPushSeq) || seq < lastPushSeq`
+- Sequence 0 and duplicate sequences are always accepted
+
+### PUSH Flag Behavior
+
+The PUSH flag (bit 0 of byte 0) controls when the display renders:
+- Non-PUSH packets: pixel data is buffered but no render is triggered
+- PUSH packets: trigger a render and update `lastPushSeq`
+- If no PUSH has ever been received, every packet triggers a render (for compatibility with senders that don't use PUSH)
 
 ## References
 

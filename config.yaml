@@ -1,11 +1,11 @@
-rows: 10
-cols: 2
-wiring: "col"
-http_address: ":8080"
+rows: 4
+cols: 80
+wiring: "row"
+http_address: ":9090"
 ddp_port: 4048
-init_color: "#FF0000"
+init_color: "#000000"
 name: "LED Light"
 controls: true
 headless: false
 verbose: true
-rgbw: false
+rgbw: true

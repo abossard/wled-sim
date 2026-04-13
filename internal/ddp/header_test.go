@@ -289,7 +289,7 @@ func TestValidateHeader(t *testing.T) {
 	tests := []struct {
 		name          string
 		header        *DDPHeader
-		lastSequence  uint8
+		lastPushSeq   uint8
 		expectedError string
 	}{
 		{
@@ -430,7 +430,7 @@ func TestValidateHeader(t *testing.T) {
 			expectedError: "unsupported RGBW size: 16 bits per element",
 		},
 		{
-			name: "duplicate sequence number",
+			name: "duplicate sequence is accepted (matches real WLED)",
 			header: &DDPHeader{
 				Version:  1,
 				DeviceID: DeviceIDDefault,
@@ -442,17 +442,123 @@ func TestValidateHeader(t *testing.T) {
 				},
 				Sequence: 5,
 			},
-			lastSequence:  5,
-			expectedError: "duplicate sequence number",
+			lastPushSeq: 5,
+			// No error — real WLED does NOT reject duplicates
+		},
+		{
+			name: "late packet rejected within window (lastPushSeq > 5)",
+			header: &DDPHeader{
+				Version:  1,
+				DeviceID: DeviceIDDefault,
+				DataType: DataTypeInfo{
+					IsCustom:       false,
+					Type:           TypeRGB,
+					Size:           Size8Bit,
+					BitsPerElement: 8,
+				},
+				Sequence: 8,
+			},
+			lastPushSeq:  10,
+			expectedError: "late packet rejected",
+		},
+		{
+			name: "packet outside reject window accepted (lastPushSeq > 5)",
+			header: &DDPHeader{
+				Version:  1,
+				DeviceID: DeviceIDDefault,
+				DataType: DataTypeInfo{
+					IsCustom:       false,
+					Type:           TypeRGB,
+					Size:           Size8Bit,
+					BitsPerElement: 8,
+				},
+				Sequence: 4,
+			},
+			lastPushSeq: 10,
+			// seq 4 is NOT in (5, 10), so accepted
+		},
+		{
+			name: "packet at window boundary accepted (seq == lastPushSeq-5)",
+			header: &DDPHeader{
+				Version:  1,
+				DeviceID: DeviceIDDefault,
+				DataType: DataTypeInfo{
+					IsCustom:       false,
+					Type:           TypeRGB,
+					Size:           Size8Bit,
+					BitsPerElement: 8,
+				},
+				Sequence: 5,
+			},
+			lastPushSeq: 10,
+			// seq 5 == lastPushSeq-5, boundary is exclusive, so accepted
+		},
+		{
+			name: "late packet rejected with wraparound (lastPushSeq <= 5)",
+			header: &DDPHeader{
+				Version:  1,
+				DeviceID: DeviceIDDefault,
+				DataType: DataTypeInfo{
+					IsCustom:       false,
+					Type:           TypeRGB,
+					Size:           Size8Bit,
+					BitsPerElement: 8,
+				},
+				Sequence: 14,
+			},
+			lastPushSeq:  3,
+			expectedError: "late packet rejected",
+		},
+		{
+			name: "sequence 0 always accepted",
+			header: &DDPHeader{
+				Version:  1,
+				DeviceID: DeviceIDDefault,
+				DataType: DataTypeInfo{
+					IsCustom:       false,
+					Type:           TypeRGB,
+					Size:           Size8Bit,
+					BitsPerElement: 8,
+				},
+				Sequence: 0,
+			},
+			lastPushSeq: 10,
+		},
+		{
+			name: "no push seen yet (lastPushSeq=0), all accepted",
+			header: &DDPHeader{
+				Version:  1,
+				DeviceID: DeviceIDDefault,
+				DataType: DataTypeInfo{
+					IsCustom:       false,
+					Type:           TypeRGB,
+					Size:           Size8Bit,
+					BitsPerElement: 8,
+				},
+				Sequence: 7,
+			},
+			lastPushSeq: 0,
+		},
+		{
+			name: "future packet accepted (seq > lastPushSeq)",
+			header: &DDPHeader{
+				Version:  1,
+				DeviceID: DeviceIDDefault,
+				DataType: DataTypeInfo{
+					IsCustom:       false,
+					Type:           TypeRGB,
+					Size:           Size8Bit,
+					BitsPerElement: 8,
+				},
+				Sequence: 12,
+			},
+			lastPushSeq: 10,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Set up lastSequence for duplicate sequence test
-			lastSeq := tt.lastSequence
-
-			err := ValidateHeader(tt.header, &lastSeq)
+			err := ValidateHeader(tt.header, tt.lastPushSeq)
 
 			if tt.expectedError != "" {
 				if err == nil {
