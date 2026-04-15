@@ -13,44 +13,169 @@ import (
 	"syscall"
 
 	"wled-simulator/internal/api"
+	"wled-simulator/internal/config"
 	"wled-simulator/internal/ddp"
 	"wled-simulator/internal/gui"
+	"wled-simulator/internal/recorder"
 	"wled-simulator/internal/state"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
-	"gopkg.in/yaml.v3"
 )
 
-// Config holds application configuration
-type Config struct {
-	Rows        int    `yaml:"rows" flag:"rows"`
-	Cols        int    `yaml:"cols" flag:"cols"`
-	Wiring      string `yaml:"wiring" flag:"wiring"`
-	HTTPAddress string `yaml:"http_address" flag:"http"`
-	DDPPort     int    `yaml:"ddp_port" flag:"ddp-port"`
-	InitColor   string `yaml:"init_color" flag:"init"`
-	Name        string `yaml:"name" flag:"name"`
-	Controls    bool   `yaml:"controls" flag:"controls"`
-	Headless    bool   `yaml:"headless" flag:"headless"`
-	Verbose     bool   `yaml:"verbose" flag:"v"`
-	RGBW        bool   `yaml:"rgbw" flag:"rgbw"`
+// runtime serializes lifecycle transitions (start/stop/apply) behind a mutex.
+type runtime struct {
+	mu        sync.Mutex
+	cfg       config.Config
+	state     *state.LEDState
+	ddpServer *ddp.Server
+	apiServer *api.Server
+	recorder  *recorder.Recorder
+	guiApp    *gui.GUI
+	running   bool
+	configPath string
+}
+
+func (rt *runtime) start() error {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.running {
+		return nil
+	}
+
+	// Recreate servers (DDP context is single-use after Stop)
+	rt.ddpServer = ddp.NewServer(rt.cfg.DDPPort, rt.state)
+	rt.recorder.UpdateOptions(recorder.Options{
+		Format:   rt.cfg.RecordFormat,
+		Duration: rt.cfg.RecordDuration,
+		FPS:      rt.cfg.RecordFPS,
+		Rows:     rt.cfg.Rows,
+		Cols:     rt.cfg.Cols,
+		Wiring:   rt.cfg.Wiring,
+	})
+	rt.apiServer = api.NewServer(rt.cfg.HTTPAddress, rt.state, rt.cfg.DDPPort, rt.recorder)
+
+	if err := rt.ddpServer.Start(); err != nil {
+		return fmt.Errorf("DDP start: %w", err)
+	}
+	if err := rt.apiServer.Start(); err != nil {
+		rt.ddpServer.Stop()
+		return fmt.Errorf("HTTP start: %w", err)
+	}
+
+	rt.running = true
+	return nil
+}
+
+func (rt *runtime) stop() error {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if !rt.running {
+		return nil
+	}
+
+	// Force-stop recording first
+	if rt.recorder.IsRecording() {
+		rt.recorder.Stop()
+	}
+
+	var errs []error
+	if err := rt.ddpServer.Stop(); err != nil {
+		errs = append(errs, err)
+	}
+	if err := rt.apiServer.Stop(); err != nil {
+		errs = append(errs, err)
+	}
+	rt.running = false
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
+}
+
+func (rt *runtime) applyConfig(newCfg config.Config) error {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+
+	wasRunning := rt.running
+
+	// Force-stop recording
+	if rt.recorder.IsRecording() {
+		rt.recorder.Stop()
+	}
+
+	// Stop servers
+	if rt.running {
+		rt.ddpServer.Stop()
+		rt.apiServer.Stop()
+		rt.running = false
+	}
+
+	oldCfg := rt.cfg
+	rt.cfg = newCfg
+
+	// Check if grid dimensions changed
+	gridChanged := oldCfg.Rows != newCfg.Rows ||
+		oldCfg.Cols != newCfg.Cols ||
+		oldCfg.Wiring != newCfg.Wiring ||
+		oldCfg.RGBW != newCfg.RGBW
+
+	if gridChanged {
+		totalLEDs := newCfg.Rows * newCfg.Cols
+		rt.state.Resize(totalLEDs, newCfg.InitColor, newCfg.RGBW)
+		if rt.guiApp != nil {
+			rt.guiApp.RebuildGrid(newCfg.Rows, newCfg.Cols, newCfg.Wiring, newCfg.RGBW)
+		}
+	}
+
+	// Update recorder options
+	rt.recorder.UpdateOptions(recorder.Options{
+		Format:   newCfg.RecordFormat,
+		Duration: newCfg.RecordDuration,
+		FPS:      newCfg.RecordFPS,
+		Rows:     newCfg.Rows,
+		Cols:     newCfg.Cols,
+		Wiring:   newCfg.Wiring,
+	})
+
+	// Restart if was running
+	if wasRunning {
+		rt.ddpServer = ddp.NewServer(newCfg.DDPPort, rt.state)
+		rt.apiServer = api.NewServer(newCfg.HTTPAddress, rt.state, newCfg.DDPPort, rt.recorder)
+		if err := rt.ddpServer.Start(); err != nil {
+			return fmt.Errorf("DDP restart: %w", err)
+		}
+		if err := rt.apiServer.Start(); err != nil {
+			rt.ddpServer.Stop()
+			return fmt.Errorf("HTTP restart: %w", err)
+		}
+		rt.running = true
+	}
+
+	// Save config
+	if err := newCfg.Save(rt.configPath); err != nil {
+		log.Printf("Warning: could not save config: %v", err)
+	}
+
+	return nil
 }
 
 func main() {
+	defaults := config.Defaults()
+
 	// Command line flags
-	var cfg Config
-	flag.IntVar(&cfg.Rows, "rows", 10, "Number of LED rows")
-	flag.IntVar(&cfg.Cols, "cols", 2, "Number of LED columns")
-	flag.StringVar(&cfg.Wiring, "wiring", "row", "LED wiring pattern: 'row' (row-major) or 'col' (column-major)")
-	flag.StringVar(&cfg.HTTPAddress, "http", ":8080", "HTTP listen address")
-	flag.IntVar(&cfg.DDPPort, "ddp-port", 4048, "UDP port for DDP")
-	flag.StringVar(&cfg.InitColor, "init", "#000000", "Initial color hex")
-	flag.StringVar(&cfg.Name, "name", "", "Display name for the LED matrix")
-	flag.BoolVar(&cfg.Controls, "controls", false, "Show power/brightness controls in GUI")
-	flag.BoolVar(&cfg.Headless, "headless", false, "Run without GUI")
-	flag.BoolVar(&cfg.Verbose, "v", false, "Verbose logging")
-	flag.BoolVar(&cfg.RGBW, "rgbw", false, "Enable experimental RGBW (4-channel) LED support")
+	var cfg config.Config
+	flag.IntVar(&cfg.Rows, "rows", defaults.Rows, "Number of LED rows")
+	flag.IntVar(&cfg.Cols, "cols", defaults.Cols, "Number of LED columns")
+	flag.StringVar(&cfg.Wiring, "wiring", defaults.Wiring, "LED wiring pattern: 'row' or 'col'")
+	flag.StringVar(&cfg.HTTPAddress, "http", defaults.HTTPAddress, "HTTP listen address")
+	flag.IntVar(&cfg.DDPPort, "ddp-port", defaults.DDPPort, "UDP port for DDP")
+	flag.StringVar(&cfg.InitColor, "init", defaults.InitColor, "Initial color hex")
+	flag.StringVar(&cfg.Name, "name", defaults.Name, "Display name for the LED matrix")
+	flag.BoolVar(&cfg.Controls, "controls", defaults.Controls, "Show power/brightness controls in GUI")
+	flag.BoolVar(&cfg.Headless, "headless", defaults.Headless, "Run without GUI")
+	flag.BoolVar(&cfg.Verbose, "v", defaults.Verbose, "Verbose logging")
+	flag.BoolVar(&cfg.RGBW, "rgbw", defaults.RGBW, "Enable experimental RGBW (4-channel) LED support")
 
 	configFile := flag.String("config", "config.yaml", "Configuration file path")
 	flag.Parse()
@@ -58,24 +183,31 @@ func main() {
 	// Save CLI values before loading config file
 	cliValues := cfg
 
-	// Load config file if it exists (this will overwrite cfg with file values)
-	if data, err := os.ReadFile(*configFile); err == nil {
-		if err := yaml.Unmarshal(data, &cfg); err != nil {
-			log.Printf("Error parsing config file: %v", err)
-		}
+	// Load config file if it exists
+	if fileCfg, err := config.Load(*configFile); err == nil {
+		cfg = fileCfg
 	}
 
-	// Restore CLI values that were explicitly set using reflection
+	// Apply recording defaults if not set in file
+	if cfg.RecordFormat == "" {
+		cfg.RecordFormat = defaults.RecordFormat
+	}
+	if cfg.RecordDuration == 0 {
+		cfg.RecordDuration = defaults.RecordDuration
+	}
+	if cfg.RecordFPS == 0 {
+		cfg.RecordFPS = defaults.RecordFPS
+	}
+
+	// Restore CLI values that were explicitly set
 	cfgValue := reflect.ValueOf(&cfg).Elem()
 	cliValue := reflect.ValueOf(&cliValues).Elem()
 	cfgType := reflect.TypeOf(cfg)
 
 	flag.Visit(func(f *flag.Flag) {
-		// Find the struct field that matches this flag
 		for i := 0; i < cfgType.NumField(); i++ {
 			field := cfgType.Field(i)
 			if flagName := field.Tag.Get("flag"); flagName == f.Name {
-				// Set the config value to the CLI value
 				cfgValue.Field(i).Set(cliValue.Field(i))
 				break
 			}
@@ -87,36 +219,56 @@ func main() {
 		log.Fatalf("Invalid wiring pattern '%s'. Must be 'row' or 'col'", cfg.Wiring)
 	}
 
-	// Calculate total LEDs
 	totalLEDs := cfg.Rows * cfg.Cols
-
-	// Initialize shared state
 	ledState := state.NewLEDState(totalLEDs, cfg.InitColor, cfg.RGBW)
 
-	// Setup logging
 	if cfg.Verbose {
 		log.SetFlags(log.LstdFlags | log.Lshortfile)
 	}
 
-	fmt.Printf("WLED Simulator starting with %dx%d LED matrix (%d total LEDs, %s-major wiring)\n", cfg.Rows, cfg.Cols, totalLEDs, cfg.Wiring)
+	fmt.Printf("WLED Simulator starting with %dx%d LED matrix (%d total LEDs, %s-major wiring)\n",
+		cfg.Rows, cfg.Cols, totalLEDs, cfg.Wiring)
 	if cfg.RGBW {
 		fmt.Println("RGBW mode enabled (experimental)")
 	}
 	fmt.Printf("HTTP API on %s\n", cfg.HTTPAddress)
 	fmt.Printf("DDP listening on port %d\n", cfg.DDPPort)
 
-	// Channel for server startup errors
+	// Create recorder
+	rec := recorder.New(ledState, recorder.Options{
+		Format:   cfg.RecordFormat,
+		Duration: cfg.RecordDuration,
+		FPS:      cfg.RecordFPS,
+		Rows:     cfg.Rows,
+		Cols:     cfg.Cols,
+		Wiring:   cfg.Wiring,
+	})
+
+	// Create servers
+	ddpServer := ddp.NewServer(cfg.DDPPort, ledState)
+	apiServer := api.NewServer(cfg.HTTPAddress, ledState, cfg.DDPPort, rec)
+
+	// Build runtime
+	rt := &runtime{
+		cfg:        cfg,
+		state:      ledState,
+		ddpServer:  ddpServer,
+		apiServer:  apiServer,
+		recorder:   rec,
+		running:    false,
+		configPath: *configFile,
+	}
+
+	// Start servers
 	startupErrors := make(chan error, 2)
 	var wg sync.WaitGroup
 
-	// Start DDP server
-	ddpServer := ddp.NewServer(cfg.DDPPort, ledState)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		if err := ddpServer.Start(); err != nil {
 			if errors.Is(err, syscall.EADDRINUSE) {
-				startupErrors <- fmt.Errorf("DDP port %d is already in use. Please choose a different port or stop the other process", cfg.DDPPort)
+				startupErrors <- fmt.Errorf("DDP port %d is already in use", cfg.DDPPort)
 			} else {
 				startupErrors <- fmt.Errorf("DDP server error: %v", err)
 			}
@@ -125,14 +277,12 @@ func main() {
 		startupErrors <- nil
 	}()
 
-	// Start HTTP API
-	apiServer := api.NewServer(cfg.HTTPAddress, ledState, cfg.DDPPort)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		if err := apiServer.Start(); err != nil && err != http.ErrServerClosed {
 			if errors.Is(err, syscall.EADDRINUSE) {
-				startupErrors <- fmt.Errorf("HTTP port %s is already in use. Please choose a different port or stop the other process", cfg.HTTPAddress)
+				startupErrors <- fmt.Errorf("HTTP port %s is already in use", cfg.HTTPAddress)
 			} else {
 				startupErrors <- fmt.Errorf("API server error: %v", err)
 			}
@@ -141,73 +291,65 @@ func main() {
 		startupErrors <- nil
 	}()
 
-	// Wait for both servers to start and check for errors
 	fmt.Println("Starting servers...")
 	for i := 0; i < 2; i++ {
 		if err := <-startupErrors; err != nil {
-			// Stop any successfully started servers
 			ddpServer.Stop()
 			apiServer.Stop()
-			// Wait for goroutines to finish
 			wg.Wait()
 			log.Fatalf("Failed to start servers: %v", err)
 		}
 	}
+	rt.running = true
 
-	// Set up signal handling for graceful shutdown
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
-	// Start GUI if not headless
 	if !cfg.Headless {
 		fmt.Println("Starting GUI...")
 		myApp := app.NewWithID("com.example.wled-simulator")
-		guiApp := gui.NewApp(myApp, ledState, cfg.Rows, cfg.Cols, cfg.Wiring, cfg.Name, cfg.Controls)
 
-		// Create shutdown function for servers
+		guiApp := gui.NewApp(gui.AppParams{
+			App:      myApp,
+			State:    ledState,
+			Config:   cfg,
+			Recorder: rec,
+			OnStartStop: func(start bool) error {
+				if start {
+					return rt.start()
+				}
+				return rt.stop()
+			},
+			OnApply: func(newCfg config.Config) error {
+				return rt.applyConfig(newCfg)
+			},
+		})
+		rt.guiApp = guiApp
+
 		shutdownServers := func() {
-			// Stop servers first
-			if err := ddpServer.Stop(); err != nil {
-				log.Printf("Error stopping DDP server: %v", err)
-			}
-			if err := apiServer.Stop(); err != nil {
-				log.Printf("Error stopping API server: %v", err)
-			}
+			rt.stop()
 		}
 
-		// Set window close handler - this runs on the main UI thread
 		guiApp.SetOnClose(func() {
 			fmt.Println("\nReceived shutdown signal...")
 			shutdownServers()
 			myApp.Quit()
 		})
 
-		// Handle Ctrl+C in a separate goroutine
 		go func() {
 			<-c
 			fmt.Println("\nReceived shutdown signal...")
 			shutdownServers()
-
-			// Use fyne.DoAndWait since we're in a goroutine
 			fyne.DoAndWait(func() {
 				myApp.Quit()
 			})
 		}()
 
-		// Run GUI in main thread
 		guiApp.Run()
 	} else {
-		// In headless mode, wait for interrupt
 		<-c
 		fmt.Println("\nReceived shutdown signal...")
-
-		// Stop servers
-		if err := ddpServer.Stop(); err != nil {
-			log.Printf("Error stopping DDP server: %v", err)
-		}
-		if err := apiServer.Stop(); err != nil {
-			log.Printf("Error stopping API server: %v", err)
-		}
+		rt.stop()
 	}
 
 	fmt.Println("Shutting down...")

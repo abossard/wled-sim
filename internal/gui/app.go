@@ -10,11 +10,14 @@ import (
 	"syscall"
 	"time"
 
+	"wled-simulator/internal/config"
+	"wled-simulator/internal/recorder"
 	"wled-simulator/internal/state"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -33,27 +36,42 @@ type GUI struct {
 	jsonLightRect *canvas.Rectangle
 	ddpLightRect  *canvas.Rectangle
 	flashTimers   map[*canvas.Rectangle]*time.Timer
-	timersMutex   sync.Mutex // Protect flashTimers map
+	timersMutex   sync.Mutex
+	// Settings window
+	sidebar        *Sidebar
+	settingsWindow fyne.Window
+	grid           *fyne.Container
+	gridContainer  *fyne.Container
 }
 
-func NewApp(app fyne.App, s *state.LEDState, rows, cols int, wiring, name string, controls bool) *GUI {
-	totalLEDs := rows * cols
+// AppParams holds everything the GUI needs. Callbacks avoid import cycles.
+type AppParams struct {
+	App         fyne.App
+	State       *state.LEDState
+	Config      config.Config
+	Recorder    *recorder.Recorder
+	OnStartStop func(start bool) error
+	OnApply     func(config.Config) error
+}
+
+func NewApp(p AppParams) *GUI {
+	totalLEDs := p.Config.Rows * p.Config.Cols
 	ctx, cancel := context.WithCancel(context.Background())
 
 	gui := &GUI{
-		app:         app,
-		state:       s,
+		app:         p.App,
+		state:       p.State,
 		rectangles:  make([]*canvas.Rectangle, totalLEDs),
-		rows:        rows,
-		cols:        cols,
-		wiring:      wiring,
+		rows:        p.Config.Rows,
+		cols:        p.Config.Cols,
+		wiring:      p.Config.Wiring,
 		ctx:         ctx,
 		cancel:      cancel,
 		flashTimers: make(map[*canvas.Rectangle]*time.Timer),
 	}
-	gui.window = app.NewWindow("WLED Simulator")
+	gui.window = p.App.NewWindow("WLED Simulator")
 
-	// Create activity lights using canvas.Rectangle with grey fill and black stroke
+	// Create activity lights
 	gui.jsonLightRect = canvas.NewRectangle(color.RGBA{128, 128, 128, 255})
 	gui.jsonLightRect.StrokeColor = color.Black
 	gui.jsonLightRect.StrokeWidth = 1
@@ -62,7 +80,6 @@ func NewApp(app fyne.App, s *state.LEDState, rows, cols int, wiring, name string
 	gui.ddpLightRect.StrokeColor = color.Black
 	gui.ddpLightRect.StrokeWidth = 1
 
-	// Create labels with smaller font size for status information using canvas.Text
 	jsonLabel := canvas.NewText("JSON", color.RGBA{100, 100, 100, 255})
 	jsonLabel.TextSize = 10
 	jsonLabel.Alignment = fyne.TextAlignLeading
@@ -71,7 +88,6 @@ func NewApp(app fyne.App, s *state.LEDState, rows, cols int, wiring, name string
 	ddpLabel.TextSize = 10
 	ddpLabel.Alignment = fyne.TextAlignLeading
 
-	// Create containers for the rectangle objects with proper sizing
 	jsonLightContainer := container.NewWithoutLayout(gui.jsonLightRect)
 	gui.jsonLightRect.Resize(fyne.NewSize(12, 12))
 	gui.jsonLightRect.Move(fyne.NewPos(0, 0))
@@ -82,7 +98,6 @@ func NewApp(app fyne.App, s *state.LEDState, rows, cols int, wiring, name string
 	gui.ddpLightRect.Move(fyne.NewPos(0, 0))
 	ddpLightContainer.Resize(fyne.NewSize(12, 12))
 
-	// Create containers for the text labels with proper sizing
 	jsonLabelContainer := container.NewWithoutLayout(jsonLabel)
 	jsonLabel.Resize(fyne.NewSize(40, 12))
 	jsonLabel.Move(fyne.NewPos(10, 0))
@@ -93,101 +108,60 @@ func NewApp(app fyne.App, s *state.LEDState, rows, cols int, wiring, name string
 	ddpLabel.Move(fyne.NewPos(10, 0))
 	ddpLabelContainer.Resize(fyne.NewSize(40, 12))
 
-	// Create horizontal containers to align labels with lights in a status bar layout
-	jsonContainer := container.NewHBox(
-		jsonLightContainer,
-		jsonLabelContainer,
-	)
+	jsonContainer := container.NewHBox(jsonLightContainer, jsonLabelContainer)
+	ddpContainer := container.NewHBox(ddpLightContainer, ddpLabelContainer)
 
-	ddpContainer := container.NewHBox(
-		ddpLightContainer,
-		ddpLabelContainer,
-	)
-
-	// Create the activity container as a horizontal status bar
 	activityContainer := container.NewHBox(
 		jsonContainer,
-		widget.NewLabel("    "), // Spacer between groups
+		widget.NewLabel("    "),
 		ddpContainer,
 	)
 
-	// Create a resizable grid container for LEDs
-	grid := container.NewGridWithColumns(cols)
+	// Build LED grid
+	gui.grid = container.NewGridWithColumns(p.Config.Cols)
+	gui.buildGridRectangles(totalLEDs)
 
-	// Add rectangles in row-major order for display (left-to-right, top-to-bottom)
-	ledSize := float32(16) // 16x16 pixel LEDs
-	for i := 0; i < totalLEDs; i++ {
-		rect := canvas.NewRectangle(color.Black)
-		rect.Resize(fyne.NewSize(ledSize, ledSize))
-		gui.rectangles[i] = rect
-		grid.Add(rect)
+	mainContent := gui.buildGridArea(activityContainer, p.Config.Name)
+
+	// Add a settings button at the bottom of the main window
+	settingsBtn := widget.NewButtonWithIcon("Settings", theme.SettingsIcon(), func() {
+		gui.settingsWindow.Show()
+		gui.settingsWindow.RequestFocus()
+	})
+
+	gui.window.SetContent(container.NewBorder(nil, settingsBtn, nil, nil, mainContent))
+
+	// Size the main window to fit the grid
+	ledSize := float32(16)
+	gridWidth := float32(p.Config.Cols) * ledSize
+	gridHeight := float32(p.Config.Rows) * ledSize
+	activityHeight := float32(35)
+	nameHeight := float32(0)
+	if p.Config.Name != "" {
+		nameHeight = 25
 	}
-
-	// Calculate grid size and wrap in a resizable container
-	gridWidth := float32(cols) * ledSize
-	gridHeight := float32(rows) * ledSize
-
-	// Use a simple container that allows the grid to be resizable
-	gridContainer := container.NewBorder(nil, nil, nil, nil, grid)
-
-	// Create main container with activity lights at top, name below that, and LED grid at bottom
-	var mainContainer *fyne.Container
-	if name != "" {
-		// Create name display
-		nameLabel := widget.NewLabel(name)
-		nameLabel.Alignment = fyne.TextAlignCenter
-		nameLabel.TextStyle = fyne.TextStyle{Bold: true}
-		nameContainer := container.NewCenter(nameLabel)
-
-		// Create a compact vertical container for activity + name
-		topSection := container.NewWithoutLayout(
-			activityContainer,
-			nameContainer,
-		)
-		// Position elements with minimal spacing
-		activityContainer.Resize(fyne.NewSize(120, 35))
-		activityContainer.Move(fyne.NewPos(0, 0))
-		nameContainer.Resize(fyne.NewSize(120, 20))
-		nameContainer.Move(fyne.NewPos(0, 15))   // Move name right after activity lights
-		topSection.Resize(fyne.NewSize(120, 55)) // Reduced height for tighter spacing
-		mainContainer = container.NewBorder(
-			topSection,    // top
-			nil,           // bottom
-			nil,           // left
-			nil,           // right
-			gridContainer, // center (resizable)
-		)
-	} else {
-		mainContainer = container.NewBorder(
-			activityContainer, // top
-			nil,               // bottom
-			nil,               // left
-			nil,               // right
-			gridContainer,     // center (resizable)
-		)
-	}
-
-	gui.window.SetContent(mainContainer)
-
-	// Calculate proper window size based on the actual grid content
-	activityHeight := float32(35) // Height for activity lights area
-	nameHeight := float32(0)      // Height for name display
-	if name != "" {
-		nameHeight = 25 // Compact spacing: 5px gap + 20px name height
-	}
-	padding := float32(20) // Padding around the grid
-
-	// Set window size based on grid dimensions with some spacing
+	padding := float32(20)
 	windowWidth := gridWidth + padding
-	if windowWidth < 120 { // Minimum width for activity lights
+	if windowWidth < 120 {
 		windowWidth = 120
 	}
-
 	gui.window.Resize(fyne.NewSize(windowWidth, gridHeight+activityHeight+nameHeight+padding))
 
-	// Set up graceful shutdown on window close
+	// Build sidebar and open it in a separate settings window
+	gui.sidebar = NewSidebar(p.State, p.Config, p.Recorder, p.OnStartStop, p.OnApply)
+	gui.settingsWindow = p.App.NewWindow("WLED Settings")
+	gui.settingsWindow.SetContent(gui.sidebar.Container)
+	gui.settingsWindow.Resize(fyne.NewSize(320, 600))
+	gui.settingsWindow.SetCloseIntercept(func() {
+		// Just hide the settings window instead of closing
+		gui.settingsWindow.Hide()
+	})
+	gui.settingsWindow.Show()
+
+	// Set up graceful shutdown on main window close
 	gui.window.SetCloseIntercept(func() {
 		fmt.Println("GUI: Window closing, shutting down gracefully...")
+		gui.settingsWindow.Close()
 		gui.stop()
 		gui.app.Quit()
 	})
@@ -199,6 +173,10 @@ func NewApp(app fyne.App, s *state.LEDState, rows, cols int, wiring, name string
 	// Start activity monitoring
 	gui.wg.Add(1)
 	go gui.monitorActivity()
+
+	// Start stats refresh ticker
+	gui.wg.Add(1)
+	go gui.statsLoop()
 
 	return gui
 }
@@ -213,7 +191,6 @@ func (g *GUI) stop() {
 		timer.Stop()
 		delete(g.flashTimers, light)
 	}
-	// Clear the map completely
 	g.flashTimers = make(map[*canvas.Rectangle]*time.Timer)
 	g.timersMutex.Unlock()
 
@@ -221,6 +198,78 @@ func (g *GUI) stop() {
 	time.Sleep(200 * time.Millisecond)
 
 	g.wg.Wait()
+}
+
+// buildGridRectangles creates LED rectangles and adds them to the grid.
+func (g *GUI) buildGridRectangles(totalLEDs int) {
+	ledSize := float32(16)
+	g.rectangles = make([]*canvas.Rectangle, totalLEDs)
+	for i := 0; i < totalLEDs; i++ {
+		rect := canvas.NewRectangle(color.Black)
+		rect.Resize(fyne.NewSize(ledSize, ledSize))
+		g.rectangles[i] = rect
+		g.grid.Add(rect)
+	}
+}
+
+// buildGridArea wraps the grid with activity lights and optional name label.
+func (g *GUI) buildGridArea(activityContainer *fyne.Container, name string) *fyne.Container {
+	g.gridContainer = container.NewBorder(nil, nil, nil, nil, g.grid)
+
+	if name != "" {
+		nameLabel := widget.NewLabel(name)
+		nameLabel.Alignment = fyne.TextAlignCenter
+		nameLabel.TextStyle = fyne.TextStyle{Bold: true}
+		nameContainer := container.NewCenter(nameLabel)
+
+		topSection := container.NewWithoutLayout(activityContainer, nameContainer)
+		activityContainer.Resize(fyne.NewSize(120, 35))
+		activityContainer.Move(fyne.NewPos(0, 0))
+		nameContainer.Resize(fyne.NewSize(120, 20))
+		nameContainer.Move(fyne.NewPos(0, 15))
+		topSection.Resize(fyne.NewSize(120, 55))
+
+		return container.NewBorder(topSection, nil, nil, nil, g.gridContainer)
+	}
+	return container.NewBorder(activityContainer, nil, nil, nil, g.gridContainer)
+}
+
+// RebuildGrid recreates the LED grid with new dimensions. Safe to call from any goroutine.
+func (g *GUI) RebuildGrid(rows, cols int, wiring string, rgbw bool) {
+	fyne.DoAndWait(func() {
+		g.rows = rows
+		g.cols = cols
+		g.wiring = wiring
+
+		// Clear and rebuild the grid
+		g.grid.RemoveAll()
+		g.grid = container.NewGridWithColumns(cols)
+		totalLEDs := rows * cols
+		g.buildGridRectangles(totalLEDs)
+
+		// Replace the grid in the container
+		g.gridContainer.RemoveAll()
+		g.gridContainer.Add(g.grid)
+		g.gridContainer.Refresh()
+	})
+}
+
+// statsLoop refreshes the sidebar statistics every second.
+func (g *GUI) statsLoop() {
+	defer g.wg.Done()
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-g.ctx.Done():
+			return
+		case <-ticker.C:
+			if g.sidebar != nil {
+				g.sidebar.RefreshStats()
+			}
+		}
+	}
 }
 
 // ledIndexToGridPosition converts a linear LED index to grid position based on wiring pattern

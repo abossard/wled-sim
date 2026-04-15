@@ -1,11 +1,14 @@
 rows: 4
 cols: 80
-wiring: "row"
-http_address: ":9090"
+wiring: row
+http_address: :9090
 ddp_port: 4048
-init_color: "#000000"
-name: "LED Light"
-controls: true
+init_color: '#000000'
+name: LED Light
+controls: false
 headless: false
 verbose: true
 rgbw: true
+record_format: gif
+record_duration: 24
+record_fps: 10

@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"image/color"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"wled-simulator/internal/recorder"
 	"wled-simulator/internal/state"
 
 	"github.com/gin-gonic/gin"
@@ -21,10 +24,11 @@ type Server struct {
 	httpPort int
 	ddpPort  int
 	macAddr  string
+	recorder *recorder.Recorder
 }
 
 // NewServer creates a new API server with the given configuration
-func NewServer(addr string, s *state.LEDState, ddpPort int) *Server {
+func NewServer(addr string, s *state.LEDState, ddpPort int, rec *recorder.Recorder) *Server {
 	// Extract HTTP port from addr string (format ":8080" or "127.0.0.1:8080")
 	parts := strings.Split(addr, ":")
 	httpPort, _ := strconv.Atoi(parts[len(parts)-1])
@@ -34,6 +38,7 @@ func NewServer(addr string, s *state.LEDState, ddpPort int) *Server {
 		state:    s,
 		httpPort: httpPort,
 		ddpPort:  ddpPort,
+		recorder: rec,
 	}
 
 	// Generate MAC address once during initialization
@@ -83,15 +88,12 @@ func (s *Server) generateMACAddress() string {
 func (s *Server) Start() error {
 	r := gin.Default()
 
-	// Add middleware to report 404s and other errors as failed activity
+	// Add middleware to report all JSON API activity
 	r.Use(func(c *gin.Context) {
 		c.Next()
-		// Check if this was a JSON API request that failed
 		path := c.Request.URL.Path
-		if path == "/json" || path == "/json/state" || path == "/json/info" {
-			if c.Writer.Status() >= 400 {
-				s.state.ReportActivity(state.ActivityJSON, false) // Report failed JSON activity
-			}
+		if strings.HasPrefix(path, "/json") {
+			s.state.ReportActivity(state.ActivityJSON, c.Writer.Status() < 400)
 		}
 	})
 
@@ -107,6 +109,10 @@ func (s *Server) Start() error {
 	r.GET("/json/state", s.handleGetState)
 	r.GET("/json/info", s.handleGetInfo)
 	r.POST("/json/state", s.handlePostState)
+
+	// Recording API
+	r.POST("/api/record", s.handleRecord)
+	r.GET("/api/recordings", s.handleListRecordings)
 
 	s.server = &http.Server{
 		Addr:    s.addr,
@@ -233,4 +239,58 @@ func (s *Server) handlePostState(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+type recordPayload struct {
+	Action string `json:"action"` // "start" or "stop"
+}
+
+func (s *Server) handleRecord(c *gin.Context) {
+	if s.recorder == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "recorder not available"})
+		return
+	}
+
+	var p recordPayload
+	if err := c.ShouldBindJSON(&p); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	switch p.Action {
+	case "start":
+		if err := s.recorder.Start(); err != nil {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "recording"})
+	case "stop":
+		filename, err := s.recorder.Stop()
+		if err != nil {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "stopped", "file": filename})
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "action must be 'start' or 'stop'"})
+	}
+}
+
+func (s *Server) handleListRecordings(c *gin.Context) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	files, err := recorder.ListRecordings(cwd)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	// Return absolute paths for download
+	var paths []string
+	for _, f := range files {
+		paths = append(paths, filepath.Base(f))
+	}
+	c.JSON(http.StatusOK, gin.H{"recordings": paths})
 }

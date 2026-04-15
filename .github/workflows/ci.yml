@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev
+      - name: Test
+        run: go test -v -race ./...
+
+  build-matrix:
+    needs: test
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            binary: wled-sim-linux-amd64
+            deps: sudo apt-get update && sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            binary: wled-sim-linux-arm64
+            cc: aarch64-linux-gnu-gcc
+            deps: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu libgl1-mesa-dev xorg-dev
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+            binary: wled-sim-darwin-amd64
+            deps: ""
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            binary: wled-sim-darwin-arm64
+            deps: ""
+          - os: ubuntu-latest
+            goos: windows
+            goarch: amd64
+            binary: wled-sim-windows-amd64.exe
+            cc: x86_64-w64-mingw32-gcc
+            deps: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+      - name: Install dependencies
+        if: matrix.deps != ''
+        run: ${{ matrix.deps }}
+      - name: Build
+        env:
+          CGO_ENABLED: "1"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CC: ${{ matrix.cc || '' }}
+        run: go build -ldflags="-s -w" -o build/${{ matrix.binary }} ./cmd
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.binary }}
+          path: build/${{ matrix.binary }}
+
+  preview-release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build-matrix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Prepare assets
+        run: |
+          mkdir -p release
+          find artifacts -type f | while read f; do cp "$f" release/; done
+          ls -la release/
+      - name: Delete previous preview release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete preview --yes 2>/dev/null || true
+      - name: Delete preview tag
+        run: git push origin :refs/tags/preview 2>/dev/null || true
+      - name: Create preview release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: preview
+          name: "Preview Build (${GITHUB_SHA::7})"
+          body: |
+            🚧 **Automatic preview build** from `main` branch.
+
+            Commit: ${{ github.sha }}
+            Updated: ${{ github.event.head_commit.timestamp }}
+
+            > This pre-release is replaced on every push to `main`.
+          prerelease: true
+          files: release/*

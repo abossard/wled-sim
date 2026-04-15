@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image/color"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -28,7 +29,10 @@ type LEDState struct {
 	rgbw            bool               // RGBW mode: W channel stored in color.RGBA.A field
 	lastLiveTime    time.Time          // Timestamp of last DDP packet received
 	liveTimeout     time.Duration      // How long to consider live after last packet
-	activityChannel chan ActivityEvent // Channel for activity events
+	activityChannel chan ActivityEvent  // Channel for activity events
+	ddpCount        atomic.Uint64      // Total DDP packets received
+	httpCount       atomic.Uint64      // Total HTTP requests handled
+	startTime       time.Time          // When the state was created (for uptime)
 }
 
 // NewLEDState constructs a LEDState with n LEDs initialized to hex colour.
@@ -46,6 +50,7 @@ func NewLEDState(n int, hex string, rgbw bool) *LEDState {
 		rgbw:            rgbw,
 		liveTimeout:     5 * time.Second,               // Consider live for 5 seconds after last packet
 		activityChannel: make(chan ActivityEvent, 100), // Buffered channel for activity events
+		startTime:       time.Now(),
 	}
 }
 
@@ -143,8 +148,16 @@ func (s *LEDState) SetLiveTimeout(timeout time.Duration) {
 	s.liveTimeout = timeout
 }
 
-// ReportActivity reports an activity event (non-blocking)
+// ReportActivity reports an activity event (non-blocking) and increments the corresponding counter.
 func (s *LEDState) ReportActivity(activityType ActivityType, success bool) {
+	// Increment the appropriate counter
+	switch activityType {
+	case ActivityDDP:
+		s.ddpCount.Add(1)
+	case ActivityJSON:
+		s.httpCount.Add(1)
+	}
+
 	event := ActivityEvent{
 		Type:      activityType,
 		Success:   success,
@@ -154,13 +167,51 @@ func (s *LEDState) ReportActivity(activityType ActivityType, success bool) {
 	// Non-blocking send to avoid deadlocks
 	select {
 	case s.activityChannel <- event:
-		// Event sent successfully
 	default:
-		// Channel is full, drop the event
 	}
 }
 
 // ActivityChannel returns the activity event channel for consumers
 func (s *LEDState) ActivityChannel() <-chan ActivityEvent {
 	return s.activityChannel
+}
+
+// DDPCount returns the total number of DDP packets received.
+func (s *LEDState) DDPCount() uint64 {
+	return s.ddpCount.Load()
+}
+
+// HTTPCount returns the total number of HTTP requests handled.
+func (s *LEDState) HTTPCount() uint64 {
+	return s.httpCount.Load()
+}
+
+// StartTime returns when the state was created.
+func (s *LEDState) StartTime() time.Time {
+	return s.startTime
+}
+
+// ResetCounters zeroes the DDP and HTTP counters.
+func (s *LEDState) ResetCounters() {
+	s.ddpCount.Store(0)
+	s.httpCount.Store(0)
+}
+
+// LEDCount returns the number of LEDs.
+func (s *LEDState) LEDCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.leds)
+}
+
+// Resize changes the number of LEDs, reinitializing to the given hex color.
+func (s *LEDState) Resize(n int, hex string, rgbw bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.rgbw = rgbw
+	s.leds = make([]color.RGBA, n)
+	c := parseHex(hex, rgbw)
+	for i := range s.leds {
+		s.leds[i] = c
+	}
 }

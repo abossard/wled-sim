@@ -7,12 +7,23 @@ import (
 	"testing"
 	"time"
 
+	"wled-simulator/internal/config"
 	"wled-simulator/internal/state"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/test"
 )
+
+func testParams(testApp fyne.App, s *state.LEDState, rows, cols int, wiring string) AppParams {
+	return AppParams{
+		App:    testApp,
+		State:  s,
+		Config: config.Config{Rows: rows, Cols: cols, Wiring: wiring, RecordFormat: "gif", RecordDuration: 24, RecordFPS: 10},
+		OnStartStop: func(bool) error { return nil },
+		OnApply:     func(config.Config) error { return nil },
+	}
+}
 
 func TestStop_CleansUpTimers(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -63,7 +74,7 @@ func TestFlashLight_RespectsContext(t *testing.T) {
 	cancel() // Cancel immediately
 
 	ledState := state.NewLEDState(1, "#000000", false)
-	gui := NewApp(testApp, ledState, 1, 1, "row", "", false)
+	gui := NewApp(testParams(testApp, ledState, 1, 1, "row"))
 
 	// Replace the GUI's context with our cancelled one
 	gui.ctx = ctx
@@ -89,7 +100,7 @@ func TestConcurrentShutdown(t *testing.T) {
 	defer testApp.Quit()
 
 	ledState := state.NewLEDState(10, "#000000", false)
-	gui := NewApp(testApp, ledState, 2, 5, "row", "", false)
+	gui := NewApp(testParams(testApp, ledState, 2, 5, "row"))
 
 	// Start some activity that would normally cause GUI updates
 	var wg sync.WaitGroup
@@ -154,7 +165,7 @@ func TestUpdateDisplay_RespectsContext(t *testing.T) {
 	defer testApp.Quit()
 
 	ledState := state.NewLEDState(4, "#000000", false)
-	gui := NewApp(testApp, ledState, 2, 2, "row", "", false)
+	gui := NewApp(testParams(testApp, ledState, 2, 2, "row"))
 
 	// Set a color to verify no update happens
 	originalColors := make([]color.Color, len(gui.rectangles))
@@ -185,7 +196,7 @@ func TestTimerCallbackRaceCondition(t *testing.T) {
 	defer testApp.Quit()
 
 	ledState := state.NewLEDState(1, "#000000", false)
-	gui := NewApp(testApp, ledState, 1, 1, "row", "", false)
+	gui := NewApp(testParams(testApp, ledState, 1, 1, "row"))
 
 	rect := canvas.NewRectangle(color.Black)
 

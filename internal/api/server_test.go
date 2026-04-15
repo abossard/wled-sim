@@ -46,7 +46,7 @@ const (
 
 func TestGetState(t *testing.T) {
 	ledState := state.NewLEDState(testLEDs, "#000000", false)
-	srv := NewServer(":0", ledState, testDDPPort)
+	srv := NewServer(":0", ledState, testDDPPort, nil)
 
 	r := gin.Default()
 	r.GET("/json/state", srv.handleGetState)
@@ -74,7 +74,7 @@ func TestGetState(t *testing.T) {
 
 func TestGetInfo(t *testing.T) {
 	ledState := state.NewLEDState(testLEDs, "#000000", false)
-	srv := NewServer(":0", ledState, testDDPPort)
+	srv := NewServer(":0", ledState, testDDPPort, nil)
 
 	r := gin.Default()
 	r.GET("/json/info", srv.handleGetInfo)
@@ -106,7 +106,7 @@ func TestGetInfo(t *testing.T) {
 
 func TestGetJSON(t *testing.T) {
 	ledState := state.NewLEDState(testLEDs, "#000000", false)
-	srv := NewServer(":0", ledState, testDDPPort)
+	srv := NewServer(":0", ledState, testDDPPort, nil)
 
 	r := gin.Default()
 	r.GET("/json", srv.handleGetJSON)
@@ -143,7 +143,7 @@ func TestGetJSON(t *testing.T) {
 
 func TestLiveFieldWithDDPActivity(t *testing.T) {
 	ledState := state.NewLEDState(testLEDs, "#000000", false)
-	srv := NewServer(":0", ledState, testDDPPort)
+	srv := NewServer(":0", ledState, testDDPPort, nil)
 
 	r := gin.Default()
 	r.GET("/json/info", srv.handleGetInfo)
@@ -211,7 +211,7 @@ func TestMACAddressGeneration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ledState := state.NewLEDState(tt.ledCount, "#000000", false)
-			srv := NewServer(tt.httpAddr, ledState, tt.ddpPort)
+			srv := NewServer(tt.httpAddr, ledState, tt.ddpPort, nil)
 
 			// Test MAC in /json/info endpoint
 			r := gin.Default()
@@ -256,7 +256,7 @@ func TestPortCollision(t *testing.T) {
 	ledState := state.NewLEDState(testLEDs, "#000000", false)
 
 	// Start first server
-	srv1 := NewServer(testPort, ledState, testDDPPort)
+	srv1 := NewServer(testPort, ledState, testDDPPort, nil)
 	errChan1 := make(chan error, 1)
 	go func() {
 		err := srv1.Start()
@@ -274,7 +274,7 @@ func TestPortCollision(t *testing.T) {
 	}
 
 	// Try to start second server on same port
-	srv2 := NewServer(testPort, ledState, testDDPPort)
+	srv2 := NewServer(testPort, ledState, testDDPPort, nil)
 	errChan2 := make(chan error, 1)
 	go func() {
 		err := srv2.Start()
@@ -306,7 +306,7 @@ func TestNoRouteHandler(t *testing.T) {
 	ledState := state.NewLEDState(testLEDs, "#000000", false)
 
 	// Start server
-	srv := NewServer(testPort, ledState, testDDPPort)
+	srv := NewServer(testPort, ledState, testDDPPort, nil)
 	errChan := make(chan error, 1)
 	go func() {
 		err := srv.Start()
@@ -414,7 +414,7 @@ func TestNoRouteHandler(t *testing.T) {
 func TestRGBWInfoEndpoint(t *testing.T) {
 	// Test with RGBW mode enabled
 	ledState := state.NewLEDState(testLEDs, "#000000", true)
-	srv := NewServer(":0", ledState, testDDPPort)
+	srv := NewServer(":0", ledState, testDDPPort, nil)
 
 	r := gin.Default()
 	r.GET("/json/info", srv.handleGetInfo)
@@ -441,7 +441,7 @@ func TestRGBWInfoEndpoint(t *testing.T) {
 
 	// Test with RGB mode (default)
 	ledState2 := state.NewLEDState(testLEDs, "#000000", false)
-	srv2 := NewServer(":0", ledState2, testDDPPort)
+	srv2 := NewServer(":0", ledState2, testDDPPort, nil)
 
 	r2 := gin.Default()
 	r2.GET("/json/info", srv2.handleGetInfo)
@@ -462,7 +462,7 @@ func TestRGBWInfoEndpoint(t *testing.T) {
 
 func TestRGBWPostState(t *testing.T) {
 	ledState := state.NewLEDState(testLEDs, "#000000", true)
-	srv := NewServer(":0", ledState, testDDPPort)
+	srv := NewServer(":0", ledState, testDDPPort, nil)
 
 	r := gin.Default()
 	r.POST("/json/state", srv.handlePostState)
