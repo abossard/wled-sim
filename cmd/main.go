@@ -53,7 +53,7 @@ func (rt *runtime) start() error {
 		Cols:     rt.cfg.Cols,
 		Wiring:   rt.cfg.Wiring,
 	})
-	rt.apiServer = api.NewServer(rt.cfg.HTTPAddress, rt.state, rt.cfg.DDPPort, rt.recorder)
+	rt.apiServer = api.NewServer(rt.cfg.HTTPAddress, rt.state, rt.cfg.DDPPort, rt.cfg.Name, rt.recorder)
 
 	if err := rt.ddpServer.Start(); err != nil {
 		return fmt.Errorf("DDP start: %w", err)
@@ -141,7 +141,7 @@ func (rt *runtime) applyConfig(newCfg config.Config) error {
 	// Restart if was running
 	if wasRunning {
 		rt.ddpServer = ddp.NewServer(newCfg.DDPPort, rt.state)
-		rt.apiServer = api.NewServer(newCfg.HTTPAddress, rt.state, newCfg.DDPPort, rt.recorder)
+		rt.apiServer = api.NewServer(newCfg.HTTPAddress, rt.state, newCfg.DDPPort, newCfg.Name, rt.recorder)
 		if err := rt.ddpServer.Start(); err != nil {
 			return fmt.Errorf("DDP restart: %w", err)
 		}
@@ -246,7 +246,7 @@ func main() {
 
 	// Create servers
 	ddpServer := ddp.NewServer(cfg.DDPPort, ledState)
-	apiServer := api.NewServer(cfg.HTTPAddress, ledState, cfg.DDPPort, rec)
+	apiServer := api.NewServer(cfg.HTTPAddress, ledState, cfg.DDPPort, cfg.Name, rec)
 
 	// Build runtime
 	rt := &runtime{

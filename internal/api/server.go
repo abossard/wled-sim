@@ -24,11 +24,12 @@ type Server struct {
 	httpPort int
 	ddpPort  int
 	macAddr  string
+	name     string
 	recorder *recorder.Recorder
 }
 
 // NewServer creates a new API server with the given configuration
-func NewServer(addr string, s *state.LEDState, ddpPort int, rec *recorder.Recorder) *Server {
+func NewServer(addr string, s *state.LEDState, ddpPort int, name string, rec *recorder.Recorder) *Server {
 	// Extract HTTP port from addr string (format ":8080" or "127.0.0.1:8080")
 	parts := strings.Split(addr, ":")
 	httpPort, _ := strconv.Atoi(parts[len(parts)-1])
@@ -38,6 +39,7 @@ func NewServer(addr string, s *state.LEDState, ddpPort int, rec *recorder.Record
 		state:    s,
 		httpPort: httpPort,
 		ddpPort:  ddpPort,
+		name:     name,
 		recorder: rec,
 	}
 
@@ -109,6 +111,8 @@ func (s *Server) Start() error {
 	r.GET("/json/state", s.handleGetState)
 	r.GET("/json/info", s.handleGetInfo)
 	r.POST("/json/state", s.handlePostState)
+	r.GET("/json/cfg", s.handleGetConfig)
+	r.POST("/json/cfg", s.handlePostConfig)
 
 	// Recording API
 	r.POST("/api/record", s.handleRecord)
@@ -158,6 +162,8 @@ func (s *Server) handleGetJSON(c *gin.Context) {
 	ledsInfo := gin.H{
 		"count": len(s.state.LEDs()),
 		"rgbw":  s.state.IsRGBW(),
+		"wv":    false,
+		"cct":   false,
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"state": gin.H{
@@ -166,12 +172,26 @@ func (s *Server) handleGetJSON(c *gin.Context) {
 			"live": s.state.IsLive(),
 		},
 		"info": gin.H{
-			"ver":  "simulator",
-			"ip":   "127.0.0.1",
-			"name": "WLED Simulator",
-			"live": s.state.IsLive(),
-			"mac":  s.macAddr,
-			"leds": ledsInfo,
+			"ver":      "0.14.0",
+			"vid":      2407260,
+			"brand":    "WLED",
+			"ip":       "127.0.0.1",
+			"name":     s.name,
+			"udpport":  21324,
+			"live":     s.state.IsLive(),
+			"lm":       "",
+			"lip":      "",
+			"ws":       0,
+			"fxcount":  0,
+			"palcount": 0,
+			"mac":      s.macAddr,
+			"leds":     ledsInfo,
+			"wifi": gin.H{
+				"bssid":   "",
+				"rssi":    0,
+				"signal":  100,
+				"channel": 0,
+			},
 		},
 	})
 }
@@ -188,15 +208,55 @@ func (s *Server) handleGetInfo(c *gin.Context) {
 	ledsInfo := gin.H{
 		"count": len(s.state.LEDs()),
 		"rgbw":  s.state.IsRGBW(),
+		"wv":    false,
+		"cct":   false,
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"ver":  "simulator",
-		"ip":   "127.0.0.1",
-		"name": "WLED Simulator",
-		"live": s.state.IsLive(),
-		"mac":  s.macAddr,
-		"leds": ledsInfo,
+		"ver":      "0.14.0",
+		"vid":      2407260,
+		"brand":    "WLED",
+		"ip":       "127.0.0.1",
+		"name":     s.name,
+		"udpport":  21324,
+		"live":     s.state.IsLive(),
+		"lm":       "",
+		"lip":      "",
+		"ws":       0,
+		"fxcount":  0,
+		"palcount": 0,
+		"mac":      s.macAddr,
+		"leds":     ledsInfo,
+		"wifi": gin.H{
+			"bssid":   "",
+			"rssi":    0,
+			"signal":  100,
+			"channel": 0,
+		},
 	})
+}
+
+func (s *Server) handleGetConfig(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"if": gin.H{
+			"live": gin.H{
+				"en":      true,
+				"no-gc":   false,
+				"maxbri":  false,
+				"timeout": 25,
+				"port":    s.ddpPort,
+				"dmx": gin.H{
+					"mode": 4,
+					"uni":  1,
+					"addr": 1,
+				},
+			},
+		},
+	})
+}
+
+func (s *Server) handlePostConfig(c *gin.Context) {
+	// Accept config updates but don't persist them (simulator is stateless for config)
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 func (s *Server) handlePostState(c *gin.Context) {

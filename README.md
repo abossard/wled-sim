@@ -7,7 +7,8 @@ A minimal but extensible desktop application that behaves like a real WLED node 
 ## Features
 
 * Configurable LED matrix display in a Fyne GUI.
-* Full WLED JSON API (`/json`, `/json/state`, `/json/info`) with `live` field support.
+* Full WLED JSON API (`/json`, `/json/state`, `/json/info`, `/json/cfg`) with `live` field support.
+* **LedFX compatible**: includes `brand`, `vid`, and sync config fields required by LedFX device detection.
 * DDP UDP listener on port 4048 for real-time LED streaming.
 * Thread-safe shared LED state with power and brightness control.
 * Command-line flags and optional `config.yaml` for easy configuration.
@@ -82,6 +83,23 @@ Run all unit tests:
 ```bash
 go test ./...
 ```
+
+### Using with LedFX
+
+To use this simulator with [LedFX](https://github.com/LedFx/LedFx):
+
+1. **Start the simulator on port 80** (LedFX expects WLED on the default HTTP port):
+   ```bash
+   # macOS/Linux may require sudo for port 80
+   sudo go run ./cmd -http :80
+   # Or use config.yaml with http_address: ":80"
+   ```
+
+2. **Add as a WLED device** in LedFX using IP `127.0.0.1`.
+
+3. LedFX will detect the simulator as a WLED device (DDP mode) and stream LED data to UDP port 4048.
+
+> **Note:** If you can't bind port 80, you can use port forwarding (e.g., `sudo pfctl` on macOS) or specify the port in LedFX as `127.0.0.1:9090` if your LedFX version supports it.
 
 ### Manual Testing with curl
 

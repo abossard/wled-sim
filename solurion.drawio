@@ -1,0 +1,144 @@
+<mxfile host="65bd71144e">
+    <diagram id="4PZ_lvWVorKLrNOlkdns" name="Page-1">
+        <mxGraphModel dx="907" dy="1473" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="7" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+                    <mxGeometry x="190" y="50" width="320" height="200" as="geometry"/>
+                </mxCell>
+                <mxCell id="2" value="My AI Ninja&lt;div&gt;Eigent.ai&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="200" y="60" width="170" height="180" as="geometry"/>
+                </mxCell>
+                <mxCell id="3" value="Agent Platform&lt;div&gt;The Agent Family&lt;/div&gt;&lt;div&gt;AI-vengers&lt;/div&gt;&lt;div&gt;Sp-AI-derman&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="190" y="260" width="540" height="190" as="geometry"/>
+                </mxCell>
+                <mxCell id="4" value="Anthropic / Open AI / Copilot SDK ($20 / $40)" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="190" y="460" width="540" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="5" value="Screenrecording" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="380" y="60" width="120" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="6" value="Distillation / Analytics" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="380" y="170" width="120" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="8" value="1" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+                    <mxGeometry x="310" y="-50" width="80" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="9" value="2" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+                    <mxGeometry x="570" y="-50" width="80" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="14" value="" style="group" parent="1" vertex="1" connectable="0">
+                    <mxGeometry x="550" y="40" width="100" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="10" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=6;" parent="14" vertex="1">
+                    <mxGeometry width="100" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="11" value="My AI Ninja&lt;div&gt;Eigent.ai&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fontSize=6;" parent="14" vertex="1">
+                    <mxGeometry x="3.125" y="3.5" width="53.125" height="62.99999999999999" as="geometry"/>
+                </mxCell>
+                <mxCell id="12" value="Screenrecording" style="rounded=1;whiteSpace=wrap;html=1;fontSize=6;" parent="14" vertex="1">
+                    <mxGeometry x="59.375" y="3.5" width="37.5" height="35" as="geometry"/>
+                </mxCell>
+                <mxCell id="13" value="Distillation / Analytics" style="rounded=1;whiteSpace=wrap;html=1;fontSize=6;" parent="14" vertex="1">
+                    <mxGeometry x="59.375" y="42" width="37.5" height="24.5" as="geometry"/>
+                </mxCell>
+                <mxCell id="15" value="" style="group" parent="1" vertex="1" connectable="0">
+                    <mxGeometry x="660" y="40" width="100" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="16" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=6;" parent="15" vertex="1">
+                    <mxGeometry width="100" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="17" value="My AI Ninja&lt;div&gt;Eigent.ai&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fontSize=6;" parent="15" vertex="1">
+                    <mxGeometry x="3.125" y="3.5" width="53.125" height="62.99999999999999" as="geometry"/>
+                </mxCell>
+                <mxCell id="18" value="Screenrecording" style="rounded=1;whiteSpace=wrap;html=1;fontSize=6;" parent="15" vertex="1">
+                    <mxGeometry x="59.375" y="3.5" width="37.5" height="35" as="geometry"/>
+                </mxCell>
+                <mxCell id="19" value="Distillation / Analytics" style="rounded=1;whiteSpace=wrap;html=1;fontSize=6;" parent="15" vertex="1">
+                    <mxGeometry x="59.375" y="42" width="37.5" height="24.5" as="geometry"/>
+                </mxCell>
+                <mxCell id="20" value="" style="group" parent="1" vertex="1" connectable="0">
+                    <mxGeometry x="770" y="40" width="100" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="21" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=6;" parent="20" vertex="1">
+                    <mxGeometry width="100" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="22" value="My AI Ninja&lt;div&gt;Eigent.ai&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fontSize=6;" parent="20" vertex="1">
+                    <mxGeometry x="3.125" y="3.5" width="53.125" height="62.99999999999999" as="geometry"/>
+                </mxCell>
+                <mxCell id="23" value="Screenrecording" style="rounded=1;whiteSpace=wrap;html=1;fontSize=6;" parent="20" vertex="1">
+                    <mxGeometry x="59.375" y="3.5" width="37.5" height="35" as="geometry"/>
+                </mxCell>
+                <mxCell id="24" value="Distillation / Analytics" style="rounded=1;whiteSpace=wrap;html=1;fontSize=6;" parent="20" vertex="1">
+                    <mxGeometry x="59.375" y="42" width="37.5" height="24.5" as="geometry"/>
+                </mxCell>
+                <mxCell id="25" value="" style="group" parent="1" vertex="1" connectable="0">
+                    <mxGeometry x="550" y="120" width="100" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="26" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=6;" parent="25" vertex="1">
+                    <mxGeometry width="100" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="27" value="My AI Ninja&lt;div&gt;Eigent.ai&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fontSize=6;" parent="25" vertex="1">
+                    <mxGeometry x="3.125" y="3.5" width="53.125" height="62.99999999999999" as="geometry"/>
+                </mxCell>
+                <mxCell id="28" value="Screenrecording" style="rounded=1;whiteSpace=wrap;html=1;fontSize=6;" parent="25" vertex="1">
+                    <mxGeometry x="59.375" y="3.5" width="37.5" height="35" as="geometry"/>
+                </mxCell>
+                <mxCell id="29" value="Distillation / Analytics" style="rounded=1;whiteSpace=wrap;html=1;fontSize=6;" parent="25" vertex="1">
+                    <mxGeometry x="59.375" y="42" width="37.5" height="24.5" as="geometry"/>
+                </mxCell>
+                <mxCell id="38" style="edgeStyle=none;html=1;" parent="1" source="30" target="37" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="30" value="Process Mining" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="663" y="120" width="207" height="76" as="geometry"/>
+                </mxCell>
+                <mxCell id="32" style="edgeStyle=none;html=1;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" parent="1" source="31" target="7" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="31" value="" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;size=0.15384615384615385;" parent="1" vertex="1">
+                    <mxGeometry x="10" y="-20" width="120" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="33" value="a" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="670" y="160" width="40" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="34" value="b" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="720" y="160" width="40" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="35" value="c" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="770" y="160" width="40" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="36" value="d" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="820" y="160" width="40" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="37" value="Peter" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;" parent="1" vertex="1">
+                    <mxGeometry x="870" y="290" width="50" height="105" as="geometry"/>
+                </mxCell>
+                <mxCell id="39" value="CEO" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="910" y="44" width="207" height="166" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="4_TBE8trICo_p9SQ2tml" name="Page-2">
+        <mxGraphModel dx="907" dy="646" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="SsuZVfN83H9amBklJ5WL-1" value="EMEA: 7" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="500" y="100" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="SsuZVfN83H9amBklJ5WL-2" value="US: 6" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="650" y="340" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="SsuZVfN83H9amBklJ5WL-3" value="ASIA: 0" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="340" y="354" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="SsuZVfN83H9amBklJ5WL-4" value="India" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="250" y="440" width="120" height="60" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
