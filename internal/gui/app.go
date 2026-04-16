@@ -37,21 +37,24 @@ type GUI struct {
 	ddpLightRect  *canvas.Rectangle
 	flashTimers   map[*canvas.Rectangle]*time.Timer
 	timersMutex   sync.Mutex
-	// Settings window
-	sidebar        *Sidebar
-	settingsWindow fyne.Window
-	grid           *fyne.Container
-	gridContainer  *fyne.Container
+	// Settings
+	settingsWindow  fyne.Window
+	grid            *fyne.Container
+	gridContainer   *fyne.Container
+	onSettingsOpen  func()
+	onSettingsClose func(newCfg *config.Config)
+	currentCfg      config.Config
+	recorder        *recorder.Recorder
 }
 
 // AppParams holds everything the GUI needs. Callbacks avoid import cycles.
 type AppParams struct {
-	App         fyne.App
-	State       *state.LEDState
-	Config      config.Config
-	Recorder    *recorder.Recorder
-	OnStartStop func(start bool) error
-	OnApply     func(config.Config) error
+	App             fyne.App
+	State           *state.LEDState
+	Config          config.Config
+	Recorder        *recorder.Recorder
+	OnSettingsOpen  func()
+	OnSettingsClose func(newCfg *config.Config)
 }
 
 func NewApp(p AppParams) *GUI {
@@ -62,15 +65,19 @@ func NewApp(p AppParams) *GUI {
 	p.App.Settings().SetTheme(theme.DarkTheme())
 
 	gui := &GUI{
-		app:         p.App,
-		state:       p.State,
-		rectangles:  make([]*canvas.Rectangle, totalLEDs),
-		rows:        p.Config.Rows,
-		cols:        p.Config.Cols,
-		wiring:      p.Config.Wiring,
-		ctx:         ctx,
-		cancel:      cancel,
-		flashTimers: make(map[*canvas.Rectangle]*time.Timer),
+		app:             p.App,
+		state:           p.State,
+		rectangles:      make([]*canvas.Rectangle, totalLEDs),
+		rows:            p.Config.Rows,
+		cols:            p.Config.Cols,
+		wiring:          p.Config.Wiring,
+		ctx:             ctx,
+		cancel:          cancel,
+		flashTimers:     make(map[*canvas.Rectangle]*time.Timer),
+		onSettingsOpen:  p.OnSettingsOpen,
+		onSettingsClose: p.OnSettingsClose,
+		currentCfg:      p.Config,
+		recorder:        p.Recorder,
 	}
 	gui.window = p.App.NewWindow("WLED Simulator")
 
@@ -126,10 +133,9 @@ func NewApp(p AppParams) *GUI {
 
 	mainContent := gui.buildGridArea(activityContainer, p.Config.Name)
 
-	// Add a settings button at the bottom of the main window
+	// Settings button — opens modal settings (stops servers first)
 	settingsBtn := widget.NewButtonWithIcon("Settings", theme.SettingsIcon(), func() {
-		gui.settingsWindow.Show()
-		gui.settingsWindow.RequestFocus()
+		gui.openSettings()
 	})
 
 	gui.window.SetContent(container.NewBorder(nil, settingsBtn, nil, nil, mainContent))
@@ -150,21 +156,12 @@ func NewApp(p AppParams) *GUI {
 	}
 	gui.window.Resize(fyne.NewSize(windowWidth, gridHeight+activityHeight+nameHeight+padding))
 
-	// Build sidebar and open it in a separate settings window
-	gui.sidebar = NewSidebar(p.State, p.Config, p.Recorder, p.OnStartStop, p.OnApply)
-	gui.settingsWindow = p.App.NewWindow("WLED Settings")
-	gui.settingsWindow.SetContent(gui.sidebar.Container)
-	gui.settingsWindow.Resize(fyne.NewSize(320, 600))
-	gui.settingsWindow.SetCloseIntercept(func() {
-		// Just hide the settings window instead of closing
-		gui.settingsWindow.Hide()
-	})
-	gui.settingsWindow.Show()
-
 	// Set up graceful shutdown on main window close
 	gui.window.SetCloseIntercept(func() {
 		fmt.Println("GUI: Window closing, shutting down gracefully...")
-		gui.settingsWindow.Close()
+		if gui.settingsWindow != nil {
+			gui.settingsWindow.Close()
+		}
 		gui.stop()
 		gui.app.Quit()
 	})
@@ -177,11 +174,47 @@ func NewApp(p AppParams) *GUI {
 	gui.wg.Add(1)
 	go gui.monitorActivity()
 
-	// Start stats refresh ticker
-	gui.wg.Add(1)
-	go gui.statsLoop()
-
 	return gui
+}
+
+// openSettings stops servers, shows settings window, restarts on close/apply.
+func (g *GUI) openSettings() {
+	// Stop servers
+	if g.onSettingsOpen != nil {
+		g.onSettingsOpen()
+	}
+
+	sidebar := NewSidebar(
+		g.currentCfg,
+		func(cfg config.Config) {
+			// Apply: close settings, restart with new config
+			g.currentCfg = cfg
+			g.settingsWindow.Close()
+			if g.onSettingsClose != nil {
+				g.onSettingsClose(&cfg)
+			}
+		},
+		func() {
+			// Cancel: close settings, restart with old config
+			g.settingsWindow.Close()
+			if g.onSettingsClose != nil {
+				g.onSettingsClose(nil)
+			}
+		},
+	)
+
+	g.settingsWindow = g.app.NewWindow("WLED Settings")
+	g.settingsWindow.SetContent(sidebar.Container)
+	g.settingsWindow.Resize(fyne.NewSize(320, 600))
+	g.settingsWindow.SetCloseIntercept(func() {
+		// Window X button = cancel
+		g.settingsWindow.Close()
+		if g.onSettingsClose != nil {
+			g.onSettingsClose(nil)
+		}
+	})
+	g.settingsWindow.Show()
+	g.settingsWindow.RequestFocus()
 }
 
 // stop cancels the context and waits for goroutines to finish
@@ -252,24 +285,6 @@ func (g *GUI) RebuildGrid(rows, cols int, wiring string, rgbw bool) {
 		g.gridContainer.Add(g.grid)
 		g.gridContainer.Refresh()
 	})
-}
-
-// statsLoop refreshes the sidebar statistics every second.
-func (g *GUI) statsLoop() {
-	defer g.wg.Done()
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-g.ctx.Done():
-			return
-		case <-ticker.C:
-			if g.sidebar != nil {
-				g.sidebar.RefreshStats()
-			}
-		}
-	}
 }
 
 // ledIndexToGridPosition converts a linear LED index to grid position based on wiring pattern

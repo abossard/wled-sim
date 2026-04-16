@@ -93,23 +93,11 @@ func (rt *runtime) stop() error {
 	return nil
 }
 
+// applyConfig applies new config, rebuilds grid if needed, saves, and restarts servers.
+// Expects servers to already be stopped.
 func (rt *runtime) applyConfig(newCfg config.Config) error {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-
-	wasRunning := rt.running
-
-	// Force-stop recording
-	if rt.recorder.IsRecording() {
-		rt.recorder.Stop()
-	}
-
-	// Stop servers
-	if rt.running {
-		rt.ddpServer.Stop()
-		rt.apiServer.Stop()
-		rt.running = false
-	}
 
 	oldCfg := rt.cfg
 	rt.cfg = newCfg
@@ -138,24 +126,22 @@ func (rt *runtime) applyConfig(newCfg config.Config) error {
 		Wiring:   newCfg.Wiring,
 	})
 
-	// Restart if was running
-	if wasRunning {
-		rt.ddpServer = ddp.NewServer(newCfg.DDPPort, rt.state)
-		rt.apiServer = api.NewServer(newCfg.HTTPAddress, rt.state, newCfg.DDPPort, newCfg.Name, newCfg.Rows, newCfg.Cols, rt.recorder)
-		if err := rt.ddpServer.Start(); err != nil {
-			return fmt.Errorf("DDP restart: %w", err)
-		}
-		if err := rt.apiServer.Start(); err != nil {
-			rt.ddpServer.Stop()
-			return fmt.Errorf("HTTP restart: %w", err)
-		}
-		rt.running = true
-	}
-
 	// Save config
 	if err := newCfg.Save(rt.configPath); err != nil {
 		log.Printf("Warning: could not save config: %v", err)
 	}
+
+	// Restart servers with new config
+	rt.ddpServer = ddp.NewServer(newCfg.DDPPort, rt.state)
+	rt.apiServer = api.NewServer(newCfg.HTTPAddress, rt.state, newCfg.DDPPort, newCfg.Name, newCfg.Rows, newCfg.Cols, rt.recorder)
+	if err := rt.ddpServer.Start(); err != nil {
+		return fmt.Errorf("DDP restart: %w", err)
+	}
+	if err := rt.apiServer.Start(); err != nil {
+		rt.ddpServer.Stop()
+		return fmt.Errorf("HTTP restart: %w", err)
+	}
+	rt.running = true
 
 	return nil
 }
@@ -314,14 +300,15 @@ func main() {
 			State:    ledState,
 			Config:   cfg,
 			Recorder: rec,
-			OnStartStop: func(start bool) error {
-				if start {
-					return rt.start()
-				}
-				return rt.stop()
+			OnSettingsOpen: func() {
+				rt.stop()
 			},
-			OnApply: func(newCfg config.Config) error {
-				return rt.applyConfig(newCfg)
+			OnSettingsClose: func(newCfg *config.Config) {
+				if newCfg != nil {
+					rt.applyConfig(*newCfg)
+				} else {
+					rt.start()
+				}
 			},
 		})
 		rt.guiApp = guiApp

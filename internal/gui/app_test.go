@@ -17,11 +17,11 @@ import (
 
 func testParams(testApp fyne.App, s *state.LEDState, rows, cols int, wiring string) AppParams {
 	return AppParams{
-		App:    testApp,
-		State:  s,
-		Config: config.Config{Rows: rows, Cols: cols, Wiring: wiring, RecordFormat: "gif", RecordDuration: 24, RecordFPS: 10},
-		OnStartStop: func(bool) error { return nil },
-		OnApply:     func(config.Config) error { return nil },
+		App:             testApp,
+		State:           s,
+		Config:          config.Config{Rows: rows, Cols: cols, Wiring: wiring, RecordFormat: "gif", RecordDuration: 24, RecordFPS: 10},
+		OnSettingsOpen:  func() {},
+		OnSettingsClose: func(*config.Config) {},
 	}
 }
 
