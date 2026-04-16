@@ -6,11 +6,12 @@ A minimal but extensible desktop application that behaves like a real WLED node 
 
 ## Features
 
-* Configurable LED matrix display in a Fyne GUI.
-* Full WLED JSON API (`/json`, `/json/state`, `/json/info`, `/json/cfg`) with `live` field support.
-* **LedFX compatible**: includes `brand`, `vid`, and sync config fields required by LedFX device detection.
+* Configurable LED matrix display in a Fyne GUI with dark theme.
+* Full WLED JSON API (`/json`, `/json/state`, `/json/info`, `/json/cfg`, `/json/nodes`) with `live` field support.
+* **LedFX compatible**: includes `brand`, `vid`, segment array, matrix dimensions, and sync config fields required by LedFX device detection and DDP streaming.
 * DDP UDP listener on port 4048 for real-time LED streaming.
 * Thread-safe shared LED state with power and brightness control.
+* **Modal settings**: opening settings stops servers; closing restarts them — clean separation between configuration and operation.
 * Command-line flags and optional `config.yaml` for easy configuration.
 * Indicators for JSON and DDP activity, green for success and red for error.
 * **Experimental RGBW support**: 4-channel LED mode via `--rgbw` flag or config, with full DDP and API support.
@@ -42,6 +43,7 @@ Open `http://localhost:9090/json` in your browser or point your WLED mobile app 
 | `-http`     | :8080   | HTTP listen address                  |
 | `-ddp-port` | 4048    | UDP port for DDP                     |
 | `-init`     | #000000 | Initial LED colour (hex)           |
+| `-name`     | LED Light | Display name for the device        |
 | `-controls` | false   | Show power/brightness controls in UI |
 | `-headless` | false   | Disable GUI for CI (API/DDP only)    |
 | `-v`        | false   | Verbose logging                      |
@@ -50,13 +52,14 @@ Open `http://localhost:9090/json` in your browser or point your WLED mobile app 
 You can also create a `config.yaml` file with the same keys to persist defaults.
 
 ```yaml
-rows: 10
-cols: 3
-wiring: "col"
-http_address: ":9090"
+rows: 4
+cols: 80
+wiring: "row"
+http_address: ":80"
 ddp_port: 4048
-init_color: "#202020"
-rgbw: false
+init_color: "#000000"
+name: "LED Light"
+rgbw: true
 ```
 
 ### LED Wiring Patterns
@@ -75,6 +78,33 @@ The simulator supports two common LED matrix wiring patterns:
   ↓   ↓   ↓
   1   3   5
   ```
+
+## WLED API Compatibility
+
+The simulator implements the following WLED JSON API endpoints:
+
+| Endpoint        | Method | Description                                      |
+|-----------------|--------|--------------------------------------------------|
+| `/json`         | GET    | Combined state, info, and config                 |
+| `/json/state`   | GET    | LED state including segment array (`seg`)        |
+| `/json/state`   | POST   | Update LED state (on/off, brightness, colors)    |
+| `/json/info`    | GET    | Device info with `brand`, `vid`, `mac`, `leds.matrix` |
+| `/json/cfg`     | GET    | Sync/live config (DDP port, timeout)             |
+| `/json/nodes`   | GET    | WLED node discovery (empty for standalone)       |
+
+### LedFX Integration Details
+
+The API responses are designed to pass LedFX's WLED device detection:
+
+- **`brand: "WLED"`** and **`vid: 2407260`** — required for device identification and DDP support detection.
+- **`leds.matrix`** — reports `{w, h}` dimensions so LedFX detects matrix layouts (e.g., `{w: 80, h: 4}` for a 4×80 grid).
+- **`seg` array** — one segment per row with WLED-compatible fields (`id`, `start`, `stop`, `len`, `on`, etc.), preventing the "seg" error toast in LedFX.
+- **`/json/cfg`** — includes `if.live.port` pointing to the DDP port, enabling LedFX to discover the streaming endpoint.
+- **`/json/nodes`** — returns empty nodes array to satisfy LedFX's node discovery request.
+
+## Settings
+
+Click the **Settings** button at the bottom of the main window to configure the simulator. Settings are **modal** — opening them pauses the DDP/HTTP servers, and closing them (via Apply or Cancel) restarts the servers. This ensures a clean, responsive settings experience.
 
 ## Testing
 
@@ -99,7 +129,7 @@ To use this simulator with [LedFX](https://github.com/LedFx/LedFx):
 
 3. LedFX will detect the simulator as a WLED device (DDP mode) and stream LED data to UDP port 4048.
 
-> **Note:** If you can't bind port 80, you can use port forwarding (e.g., `sudo pfctl` on macOS) or specify the port in LedFX as `127.0.0.1:9090` if your LedFX version supports it.
+> **Note:** If you change settings in the simulator, delete and re-add the WLED device in LedFX to pick up the new matrix/segment configuration.
 
 ### Manual Testing with curl
 
@@ -125,14 +155,14 @@ curl -X POST http://localhost:8080/json/state -H "Content-Type: application/json
 curl -X POST http://localhost:8080/json/state -H "Content-Type: application/json" -d '{"seg":[{"col":[[255,255,255]]}]}'
 ```
 
-**Get current state:**
+**Get current state (with segments):**
 ```bash
-curl http://localhost:8080/json/state
+curl http://localhost:8080/json/state | jq '.seg'
 ```
 
-**Get device info:**
+**Get device info (with matrix dimensions):**
 ```bash
-curl http://localhost:8080/json/info
+curl http://localhost:8080/json/info | jq '.leds'
 ```
 
 The API responses include a `live` field that indicates when DDP data is actively being received (matches real WLED behavior).
@@ -152,7 +182,7 @@ curl -X POST http://localhost:8080/json/state -H "Content-Type: application/json
 **Check RGBW is reported in device info:**
 ```bash
 curl http://localhost:8080/json/info | jq '.leds'
-# {"count":15,"rgbw":true}
+# {"count":15,"rgbw":true,"matrix":{"w":3,"h":5}}
 ```
 
 ### Manual Testing with DDP

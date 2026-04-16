@@ -1,7 +1,7 @@
 rows: 4
 cols: 80
 wiring: row
-http_address: :80
+http_address: 0.0.0.0:80
 ddp_port: 4048
 init_color: '#000000'
 name: LED Light
