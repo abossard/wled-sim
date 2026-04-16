@@ -107,29 +107,39 @@ sb.statusLabel = widget.NewLabel("● Running")
 sb.statusLabel.Importance = widget.SuccessImportance
 
 sb.startStopBtn = widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() {
+go func() {
 if sb.running {
 if err := sb.onStartStop(false); err != nil {
+fyne.Do(func() {
 sb.statusLabel.SetText("Error: " + err.Error())
+})
 return
 }
 sb.running = false
+fyne.Do(func() {
 sb.startStopBtn.SetText("Start")
 sb.startStopBtn.SetIcon(theme.MediaPlayIcon())
 sb.statusLabel.SetText("● Stopped")
 sb.statusLabel.Importance = widget.DangerImportance
 sb.statusLabel.Refresh()
+})
 } else {
 if err := sb.onStartStop(true); err != nil {
+fyne.Do(func() {
 sb.statusLabel.SetText("Error: " + err.Error())
+})
 return
 }
 sb.running = true
+fyne.Do(func() {
 sb.startStopBtn.SetText("Stop")
 sb.startStopBtn.SetIcon(theme.MediaStopIcon())
 sb.statusLabel.SetText("● Running")
 sb.statusLabel.Importance = widget.SuccessImportance
 sb.statusLabel.Refresh()
+})
 }
+}()
 })
 
 sb.recordLabel = widget.NewLabel("Ready")
@@ -295,11 +305,15 @@ func (sb *Sidebar) buildConfigLayout() *fyne.Container {
 applyBtn := widget.NewButtonWithIcon("Apply & Save", theme.DocumentSaveIcon(), func() {
 cfg := sb.readConfig()
 if sb.onApply != nil {
+go func() {
 if err := sb.onApply(cfg); err != nil {
+fyne.Do(func() {
 sb.statusLabel.SetText("Apply error: " + err.Error())
 sb.statusLabel.Importance = widget.DangerImportance
 sb.statusLabel.Refresh()
+})
 }
+}()
 }
 })
 applyBtn.Importance = widget.HighImportance

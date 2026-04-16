@@ -25,11 +25,13 @@ type Server struct {
 	ddpPort  int
 	macAddr  string
 	name     string
+	rows     int
+	cols     int
 	recorder *recorder.Recorder
 }
 
 // NewServer creates a new API server with the given configuration
-func NewServer(addr string, s *state.LEDState, ddpPort int, name string, rec *recorder.Recorder) *Server {
+func NewServer(addr string, s *state.LEDState, ddpPort int, name string, rows, cols int, rec *recorder.Recorder) *Server {
 	// Extract HTTP port from addr string (format ":8080" or "127.0.0.1:8080")
 	parts := strings.Split(addr, ":")
 	httpPort, _ := strconv.Atoi(parts[len(parts)-1])
@@ -40,6 +42,8 @@ func NewServer(addr string, s *state.LEDState, ddpPort int, name string, rec *re
 		httpPort: httpPort,
 		ddpPort:  ddpPort,
 		name:     name,
+		rows:     rows,
+		cols:     cols,
 		recorder: rec,
 	}
 
@@ -158,18 +162,64 @@ type segPayload struct {
 	Col [][]int `json:"col,omitempty"`
 }
 
-func (s *Server) handleGetJSON(c *gin.Context) {
-	ledsInfo := gin.H{
+// buildLedsInfo returns the leds info object including matrix dimensions
+func (s *Server) buildLedsInfo() gin.H {
+	info := gin.H{
 		"count": len(s.state.LEDs()),
 		"rgbw":  s.state.IsRGBW(),
 		"wv":    false,
 		"cct":   false,
 	}
+	if s.rows > 1 {
+		info["matrix"] = gin.H{
+			"w": s.cols,
+			"h": s.rows,
+		}
+	}
+	return info
+}
+
+// buildSegments returns WLED-compatible segment array, one per row
+func (s *Server) buildSegments() []gin.H {
+	segs := make([]gin.H, 0, s.rows)
+	for i := 0; i < s.rows; i++ {
+		start := i * s.cols
+		stop := start + s.cols
+		segs = append(segs, gin.H{
+			"id":    i,
+			"start": start,
+			"stop":  stop,
+			"len":   s.cols,
+			"grp":   1,
+			"spc":   0,
+			"of":    0,
+			"on":    true,
+			"frz":   false,
+			"bri":   255,
+			"cct":   127,
+			"set":   0,
+			"n":     fmt.Sprintf("Row %d", i),
+			"col":   [][]int{{255, 160, 0}, {0, 0, 0}, {0, 0, 0}},
+			"fx":    0,
+			"sx":    128,
+			"ix":    128,
+			"pal":   0,
+			"sel":   i == 0,
+			"rev":   false,
+			"mi":    false,
+		})
+	}
+	return segs
+}
+
+func (s *Server) handleGetJSON(c *gin.Context) {
+	ledsInfo := s.buildLedsInfo()
 	c.JSON(http.StatusOK, gin.H{
 		"state": gin.H{
 			"on":   s.state.Power(),
 			"bri":  s.state.Brightness(),
 			"live": s.state.IsLive(),
+			"seg":  s.buildSegments(),
 		},
 		"info": gin.H{
 			"ver":      "0.14.0",
@@ -201,16 +251,12 @@ func (s *Server) handleGetState(c *gin.Context) {
 		"on":   s.state.Power(),
 		"bri":  s.state.Brightness(),
 		"live": s.state.IsLive(),
+		"seg":  s.buildSegments(),
 	})
 }
 
 func (s *Server) handleGetInfo(c *gin.Context) {
-	ledsInfo := gin.H{
-		"count": len(s.state.LEDs()),
-		"rgbw":  s.state.IsRGBW(),
-		"wv":    false,
-		"cct":   false,
-	}
+	ledsInfo := s.buildLedsInfo()
 	c.JSON(http.StatusOK, gin.H{
 		"ver":      "0.14.0",
 		"vid":      2407260,

@@ -15,9 +15,19 @@ import (
 )
 
 type testState struct {
-	On   bool `json:"on"`
-	Bri  int  `json:"bri"`
-	Live bool `json:"live"`
+	On   bool      `json:"on"`
+	Bri  int       `json:"bri"`
+	Live bool      `json:"live"`
+	Seg  []testSeg `json:"seg"`
+}
+
+type testSeg struct {
+	ID    int    `json:"id"`
+	Start int    `json:"start"`
+	Stop  int    `json:"stop"`
+	Len   int    `json:"len"`
+	On    bool   `json:"on"`
+	N     string `json:"n"`
 }
 
 type testInfo struct {
@@ -32,8 +42,14 @@ type testInfo struct {
 }
 
 type testLedsInfo struct {
-	Count int  `json:"count"`
-	RGBW  bool `json:"rgbw"`
+	Count  int            `json:"count"`
+	RGBW   bool           `json:"rgbw"`
+	Matrix *testMatrixInfo `json:"matrix,omitempty"`
+}
+
+type testMatrixInfo struct {
+	W int `json:"w"`
+	H int `json:"h"`
 }
 
 type testCombined struct {
@@ -45,11 +61,13 @@ type testCombined struct {
 const (
 	testDDPPort = 4048
 	testLEDs    = 20
+	testRows    = 2
+	testCols    = 10
 )
 
 func TestGetState(t *testing.T) {
 	ledState := state.NewLEDState(testLEDs, "#000000", false)
-	srv := NewServer(":0", ledState, testDDPPort, "WLED Simulator", nil)
+	srv := NewServer(":0", ledState, testDDPPort, "WLED Simulator", testRows, testCols, nil)
 
 	r := gin.Default()
 	r.GET("/json/state", srv.handleGetState)
@@ -73,11 +91,26 @@ func TestGetState(t *testing.T) {
 	if resp.Live {
 		t.Fatalf("expected live to be false initially")
 	}
+	// Verify segments exist (one per row)
+	if len(resp.Seg) != testRows {
+		t.Fatalf("expected %d segments (one per row), got %d", testRows, len(resp.Seg))
+	}
+	// Check first segment covers first row
+	if resp.Seg[0].Start != 0 || resp.Seg[0].Stop != testCols {
+		t.Fatalf("expected seg[0] start=0 stop=%d, got start=%d stop=%d", testCols, resp.Seg[0].Start, resp.Seg[0].Stop)
+	}
+	if resp.Seg[0].Len != testCols {
+		t.Fatalf("expected seg[0] len=%d, got %d", testCols, resp.Seg[0].Len)
+	}
+	// Check second segment covers second row
+	if resp.Seg[1].Start != testCols || resp.Seg[1].Stop != testCols*2 {
+		t.Fatalf("expected seg[1] start=%d stop=%d, got start=%d stop=%d", testCols, testCols*2, resp.Seg[1].Start, resp.Seg[1].Stop)
+	}
 }
 
 func TestGetInfo(t *testing.T) {
 	ledState := state.NewLEDState(testLEDs, "#000000", false)
-	srv := NewServer(":0", ledState, testDDPPort, "WLED Simulator", nil)
+	srv := NewServer(":0", ledState, testDDPPort, "WLED Simulator", testRows, testCols, nil)
 
 	r := gin.Default()
 	r.GET("/json/info", srv.handleGetInfo)
@@ -108,11 +141,21 @@ func TestGetInfo(t *testing.T) {
 	if resp.Live {
 		t.Fatalf("expected live to be false initially")
 	}
+	// Verify matrix info is present (rows > 1)
+	if resp.Leds.Matrix == nil {
+		t.Fatal("expected leds.matrix to be present for multi-row layout")
+	}
+	if resp.Leds.Matrix.W != testCols {
+		t.Fatalf("expected matrix.w=%d, got %d", testCols, resp.Leds.Matrix.W)
+	}
+	if resp.Leds.Matrix.H != testRows {
+		t.Fatalf("expected matrix.h=%d, got %d", testRows, resp.Leds.Matrix.H)
+	}
 }
 
 func TestGetConfig(t *testing.T) {
 	ledState := state.NewLEDState(testLEDs, "#000000", false)
-	srv := NewServer(":0", ledState, testDDPPort, "WLED Simulator", nil)
+	srv := NewServer(":0", ledState, testDDPPort, "WLED Simulator", testRows, testCols, nil)
 
 	r := gin.Default()
 	r.GET("/json/cfg", srv.handleGetConfig)
@@ -150,7 +193,7 @@ func TestGetConfig(t *testing.T) {
 func TestLedFXCompatibility(t *testing.T) {
 	// End-to-end test simulating LedFX's device creation flow
 	ledState := state.NewLEDState(testLEDs, "#000000", false)
-	srv := NewServer(":0", ledState, testDDPPort, "Test Device", nil)
+	srv := NewServer(":0", ledState, testDDPPort, "Test Device", testRows, testCols, nil)
 
 	r := gin.Default()
 	r.GET("/json/info", srv.handleGetInfo)
@@ -215,7 +258,7 @@ func TestLedFXCompatibility(t *testing.T) {
 
 func TestGetJSON(t *testing.T) {
 	ledState := state.NewLEDState(testLEDs, "#000000", false)
-	srv := NewServer(":0", ledState, testDDPPort, "WLED Simulator", nil)
+	srv := NewServer(":0", ledState, testDDPPort, "WLED Simulator", testRows, testCols, nil)
 
 	r := gin.Default()
 	r.GET("/json", srv.handleGetJSON)
@@ -252,7 +295,7 @@ func TestGetJSON(t *testing.T) {
 
 func TestLiveFieldWithDDPActivity(t *testing.T) {
 	ledState := state.NewLEDState(testLEDs, "#000000", false)
-	srv := NewServer(":0", ledState, testDDPPort, "WLED Simulator", nil)
+	srv := NewServer(":0", ledState, testDDPPort, "WLED Simulator", testRows, testCols, nil)
 
 	r := gin.Default()
 	r.GET("/json/info", srv.handleGetInfo)
@@ -320,7 +363,7 @@ func TestMACAddressGeneration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ledState := state.NewLEDState(tt.ledCount, "#000000", false)
-			srv := NewServer(tt.httpAddr, ledState, tt.ddpPort, "WLED Simulator", nil)
+			srv := NewServer(tt.httpAddr, ledState, tt.ddpPort, "WLED Simulator", testRows, testCols, nil)
 
 			// Test MAC in /json/info endpoint
 			r := gin.Default()
@@ -365,7 +408,7 @@ func TestPortCollision(t *testing.T) {
 	ledState := state.NewLEDState(testLEDs, "#000000", false)
 
 	// Start first server
-	srv1 := NewServer(testPort, ledState, testDDPPort, "WLED Simulator", nil)
+	srv1 := NewServer(testPort, ledState, testDDPPort, "WLED Simulator", testRows, testCols, nil)
 	errChan1 := make(chan error, 1)
 	go func() {
 		err := srv1.Start()
@@ -383,7 +426,7 @@ func TestPortCollision(t *testing.T) {
 	}
 
 	// Try to start second server on same port
-	srv2 := NewServer(testPort, ledState, testDDPPort, "WLED Simulator", nil)
+	srv2 := NewServer(testPort, ledState, testDDPPort, "WLED Simulator", testRows, testCols, nil)
 	errChan2 := make(chan error, 1)
 	go func() {
 		err := srv2.Start()
@@ -415,7 +458,7 @@ func TestNoRouteHandler(t *testing.T) {
 	ledState := state.NewLEDState(testLEDs, "#000000", false)
 
 	// Start server
-	srv := NewServer(testPort, ledState, testDDPPort, "WLED Simulator", nil)
+	srv := NewServer(testPort, ledState, testDDPPort, "WLED Simulator", testRows, testCols, nil)
 	errChan := make(chan error, 1)
 	go func() {
 		err := srv.Start()
@@ -523,7 +566,7 @@ func TestNoRouteHandler(t *testing.T) {
 func TestRGBWInfoEndpoint(t *testing.T) {
 	// Test with RGBW mode enabled
 	ledState := state.NewLEDState(testLEDs, "#000000", true)
-	srv := NewServer(":0", ledState, testDDPPort, "WLED Simulator", nil)
+	srv := NewServer(":0", ledState, testDDPPort, "WLED Simulator", testRows, testCols, nil)
 
 	r := gin.Default()
 	r.GET("/json/info", srv.handleGetInfo)
@@ -550,7 +593,7 @@ func TestRGBWInfoEndpoint(t *testing.T) {
 
 	// Test with RGB mode (default)
 	ledState2 := state.NewLEDState(testLEDs, "#000000", false)
-	srv2 := NewServer(":0", ledState2, testDDPPort, "WLED Simulator", nil)
+	srv2 := NewServer(":0", ledState2, testDDPPort, "WLED Simulator", testRows, testCols, nil)
 
 	r2 := gin.Default()
 	r2.GET("/json/info", srv2.handleGetInfo)
@@ -571,7 +614,7 @@ func TestRGBWInfoEndpoint(t *testing.T) {
 
 func TestRGBWPostState(t *testing.T) {
 	ledState := state.NewLEDState(testLEDs, "#000000", true)
-	srv := NewServer(":0", ledState, testDDPPort, "WLED Simulator", nil)
+	srv := NewServer(":0", ledState, testDDPPort, "WLED Simulator", testRows, testCols, nil)
 
 	r := gin.Default()
 	r.POST("/json/state", srv.handlePostState)
