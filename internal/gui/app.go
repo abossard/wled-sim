@@ -58,6 +58,9 @@ func NewApp(p AppParams) *GUI {
 	totalLEDs := p.Config.Rows * p.Config.Cols
 	ctx, cancel := context.WithCancel(context.Background())
 
+	// Force dark theme so the LED grid has a black background
+	p.App.Settings().SetTheme(theme.DarkTheme())
+
 	gui := &GUI{
 		app:         p.App,
 		state:       p.State,
