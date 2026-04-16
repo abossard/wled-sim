@@ -107,38 +107,34 @@ sb.statusLabel = widget.NewLabel("● Running")
 sb.statusLabel.Importance = widget.SuccessImportance
 
 sb.startStopBtn = widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() {
-go func() {
-if sb.running {
-if err := sb.onStartStop(false); err != nil {
-fyne.Do(func() {
-sb.statusLabel.SetText("Error: " + err.Error())
-})
-return
-}
-sb.running = false
-fyne.Do(func() {
-sb.startStopBtn.SetText("Start")
-sb.startStopBtn.SetIcon(theme.MediaPlayIcon())
-sb.statusLabel.SetText("● Stopped")
-sb.statusLabel.Importance = widget.DangerImportance
+sb.startStopBtn.Disable()
+wantStart := !sb.running
+sb.statusLabel.SetText("● Working...")
+sb.statusLabel.Importance = widget.WarningImportance
 sb.statusLabel.Refresh()
-})
-} else {
-if err := sb.onStartStop(true); err != nil {
+
+go func() {
+err := sb.onStartStop(wantStart)
 fyne.Do(func() {
+if err != nil {
 sb.statusLabel.SetText("Error: " + err.Error())
-})
-return
-}
+sb.statusLabel.Importance = widget.DangerImportance
+} else if wantStart {
 sb.running = true
-fyne.Do(func() {
 sb.startStopBtn.SetText("Stop")
 sb.startStopBtn.SetIcon(theme.MediaStopIcon())
 sb.statusLabel.SetText("● Running")
 sb.statusLabel.Importance = widget.SuccessImportance
-sb.statusLabel.Refresh()
-})
+} else {
+sb.running = false
+sb.startStopBtn.SetText("Start")
+sb.startStopBtn.SetIcon(theme.MediaPlayIcon())
+sb.statusLabel.SetText("● Stopped")
+sb.statusLabel.Importance = widget.DangerImportance
 }
+sb.statusLabel.Refresh()
+sb.startStopBtn.Enable()
+})
 }()
 })
 
@@ -302,21 +298,33 @@ sb.recFPSEntry = numEntry(cfg.RecordFPS)
 }
 
 func (sb *Sidebar) buildConfigLayout() *fyne.Container {
-applyBtn := widget.NewButtonWithIcon("Apply & Save", theme.DocumentSaveIcon(), func() {
+applyBtn := widget.NewButtonWithIcon("Apply & Save", theme.DocumentSaveIcon(), nil)
+applyBtn.Importance = widget.HighImportance
+applyBtn.OnTapped = func() {
+applyBtn.Disable()
+sb.statusLabel.SetText("● Applying...")
+sb.statusLabel.Importance = widget.WarningImportance
+sb.statusLabel.Refresh()
 cfg := sb.readConfig()
-if sb.onApply != nil {
+
 go func() {
-if err := sb.onApply(cfg); err != nil {
+var err error
+if sb.onApply != nil {
+err = sb.onApply(cfg)
+}
 fyne.Do(func() {
+if err != nil {
 sb.statusLabel.SetText("Apply error: " + err.Error())
 sb.statusLabel.Importance = widget.DangerImportance
-sb.statusLabel.Refresh()
-})
+} else {
+sb.statusLabel.SetText("● Applied")
+sb.statusLabel.Importance = widget.SuccessImportance
 }
+sb.statusLabel.Refresh()
+applyBtn.Enable()
+})
 }()
 }
-})
-applyBtn.Importance = widget.HighImportance
 
 return container.NewVBox(
 sb.formRow("Rows", sb.rowsEntry),
