@@ -118,6 +118,8 @@ func (s *Server) Start() error {
 	r.GET("/json/cfg", s.handleGetConfig)
 	r.POST("/json/cfg", s.handlePostConfig)
 
+	r.GET("/json/nodes", s.handleGetNodes)
+
 	// Recording API
 	r.POST("/api/record", s.handleRecord)
 	r.GET("/api/recordings", s.handleListRecordings)
@@ -297,6 +299,12 @@ func (s *Server) handleGetConfig(c *gin.Context) {
 				},
 			},
 		},
+	})
+}
+
+func (s *Server) handleGetNodes(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"nodes": []gin.H{},
 	})
 }
 
