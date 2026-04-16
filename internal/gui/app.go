@@ -194,9 +194,6 @@ func (g *GUI) stop() {
 	g.flashTimers = make(map[*canvas.Rectangle]*time.Timer)
 	g.timersMutex.Unlock()
 
-	// Wait longer for any in-flight timer callbacks to complete
-	time.Sleep(200 * time.Millisecond)
-
 	g.wg.Wait()
 }
 
@@ -425,8 +422,10 @@ func (g *GUI) flashLight(light *canvas.Rectangle, flashColor color.RGBA) {
 	}
 	g.timersMutex.Unlock()
 
-	// Use fyne.DoAndWait to ensure GUI updates complete before potential shutdown
-	fyne.DoAndWait(func() {
+	// Use non-blocking fyne.Do to avoid deadlock during shutdown
+	// (close intercept runs on UI thread and waits for goroutines via wg.Wait,
+	// so goroutines must never block on the UI thread with DoAndWait)
+	fyne.Do(func() {
 		// Double check context hasn't been cancelled
 		select {
 		case <-g.ctx.Done():
@@ -449,8 +448,8 @@ func (g *GUI) flashLight(light *canvas.Rectangle, flashColor color.RGBA) {
 		default:
 		}
 
-		// Use fyne.DoAndWait for the revert operation too
-		fyne.DoAndWait(func() {
+		// Use non-blocking fyne.Do to avoid deadlock during shutdown
+		fyne.Do(func() {
 			// Final context check before GUI update
 			select {
 			case <-g.ctx.Done():
