@@ -346,25 +346,19 @@ func (g *GUI) updateDisplay() {
 	fyne.Do(func() {
 		isRGBW := g.state.IsRGBW()
 		for ledIndex, ledColor := range leds {
-			if ledIndex < len(leds) {
-				// Convert LED index to grid position based on wiring
-				row, col := g.ledIndexToGridPosition(ledIndex)
-
-				// Convert grid position to display rectangle index
-				displayIndex := g.gridPositionToDisplayIndex(row, col)
-
-				if displayIndex < len(g.rectangles) {
-					displayColor := ledColor
-					if isRGBW {
-						// In RGBW mode, A stores W channel — force full opacity for display
-						displayColor.A = 255
-					}
-					g.rectangles[displayIndex].FillColor = displayColor
-					g.rectangles[displayIndex].Refresh()
+			row, col := g.ledIndexToGridPosition(ledIndex)
+			displayIndex := g.gridPositionToDisplayIndex(row, col)
+			if displayIndex < len(g.rectangles) {
+				displayColor := ledColor
+				if isRGBW {
+					displayColor.A = 255
 				}
+				g.rectangles[displayIndex].FillColor = displayColor
 			}
 		}
-	}) // Non-blocking for regular updates
+		// Single refresh of the entire grid — avoids partial repaints
+		g.grid.Refresh()
+	})
 }
 
 // SetOnClose sets a custom close handler for the window
