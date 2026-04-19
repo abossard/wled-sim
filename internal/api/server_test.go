@@ -31,19 +31,19 @@ type testSeg struct {
 }
 
 type testInfo struct {
-	Ver      string       `json:"ver"`
-	Vid      int          `json:"vid"`
-	Brand    string       `json:"brand"`
-	Name     string       `json:"name"`
-	Live     bool         `json:"live"`
-	Mac      string       `json:"mac"`
-	UDPPort  int          `json:"udpport"`
-	Leds     testLedsInfo `json:"leds"`
+	Ver     string       `json:"ver"`
+	Vid     int          `json:"vid"`
+	Brand   string       `json:"brand"`
+	Name    string       `json:"name"`
+	Live    bool         `json:"live"`
+	Mac     string       `json:"mac"`
+	UDPPort int          `json:"udpport"`
+	Leds    testLedsInfo `json:"leds"`
 }
 
 type testLedsInfo struct {
-	Count  int            `json:"count"`
-	RGBW   bool           `json:"rgbw"`
+	Count  int             `json:"count"`
+	RGBW   bool            `json:"rgbw"`
 	Matrix *testMatrixInfo `json:"matrix,omitempty"`
 }
 

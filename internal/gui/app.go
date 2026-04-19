@@ -17,6 +17,8 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -38,13 +40,14 @@ type GUI struct {
 	flashTimers   map[*canvas.Rectangle]*time.Timer
 	timersMutex   sync.Mutex
 	// Settings
-	settingsWindow  fyne.Window
 	grid            *fyne.Container
 	gridContainer   *fyne.Container
 	onSettingsOpen  func()
 	onSettingsClose func(newCfg *config.Config)
 	currentCfg      config.Config
 	recorder        *recorder.Recorder
+	// Record button
+	recordBtn *widget.Button
 }
 
 // AppParams holds everything the GUI needs. Callbacks avoid import cycles.
@@ -138,7 +141,13 @@ func NewApp(p AppParams) *GUI {
 		gui.openSettings()
 	})
 
-	gui.window.SetContent(container.NewBorder(nil, settingsBtn, nil, nil, mainContent))
+	// Record button — toggle recording
+	gui.recordBtn = widget.NewButtonWithIcon("Record", theme.MediaRecordIcon(), func() {
+		gui.toggleRecording()
+	})
+
+	bottomBar := container.NewHBox(gui.recordBtn, layout.NewSpacer(), settingsBtn)
+	gui.window.SetContent(container.NewBorder(nil, bottomBar, nil, nil, mainContent))
 
 	// Size the main window to fit the grid
 	ledSize := float32(16)
@@ -151,17 +160,14 @@ func NewApp(p AppParams) *GUI {
 	}
 	padding := float32(20)
 	windowWidth := gridWidth + padding
-	if windowWidth < 120 {
-		windowWidth = 120
+	if windowWidth < 220 {
+		windowWidth = 220
 	}
 	gui.window.Resize(fyne.NewSize(windowWidth, gridHeight+activityHeight+nameHeight+padding))
 
 	// Set up graceful shutdown on main window close
 	gui.window.SetCloseIntercept(func() {
 		fmt.Println("GUI: Window closing, shutting down gracefully...")
-		if gui.settingsWindow != nil {
-			gui.settingsWindow.Close()
-		}
 		gui.stop()
 		gui.app.Quit()
 	})
@@ -177,44 +183,44 @@ func NewApp(p AppParams) *GUI {
 	return gui
 }
 
-// openSettings stops servers, shows settings window, restarts on close/apply.
+// openSettings stops servers, shows a modal settings dialog, restarts on close/apply.
 func (g *GUI) openSettings() {
 	// Stop servers
 	if g.onSettingsOpen != nil {
 		g.onSettingsOpen()
 	}
 
+	var settingsDialog dialog.Dialog
+	applied := false
+
 	sidebar := NewSidebar(
 		g.currentCfg,
 		func(cfg config.Config) {
-			// Apply: close settings, restart with new config
+			// Apply: close dialog, restart with new config
+			applied = true
 			g.currentCfg = cfg
-			g.settingsWindow.Close()
+			settingsDialog.Hide()
 			if g.onSettingsClose != nil {
 				g.onSettingsClose(&cfg)
 			}
 		},
 		func() {
-			// Cancel: close settings, restart with old config
-			g.settingsWindow.Close()
-			if g.onSettingsClose != nil {
-				g.onSettingsClose(nil)
-			}
+			// Cancel: close dialog, restart with old config
+			settingsDialog.Hide()
 		},
 	)
 
-	g.settingsWindow = g.app.NewWindow("WLED Settings")
-	g.settingsWindow.SetContent(sidebar.Container)
-	g.settingsWindow.Resize(fyne.NewSize(320, 600))
-	g.settingsWindow.SetCloseIntercept(func() {
-		// Window X button = cancel
-		g.settingsWindow.Close()
-		if g.onSettingsClose != nil {
-			g.onSettingsClose(nil)
+	settingsDialog = dialog.NewCustomWithoutButtons("Settings", sidebar.Container, g.window)
+	settingsDialog.SetOnClosed(func() {
+		// Handle dismiss (X button or Cancel) — only if Apply wasn't already called
+		if !applied {
+			if g.onSettingsClose != nil {
+				g.onSettingsClose(nil)
+			}
 		}
 	})
-	g.settingsWindow.Show()
-	g.settingsWindow.RequestFocus()
+	settingsDialog.Resize(fyne.NewSize(340, 500))
+	settingsDialog.Show()
 }
 
 // stop cancels the context and waits for goroutines to finish
@@ -307,19 +313,20 @@ func (g *GUI) gridPositionToDisplayIndex(row, col int) int {
 	return row*g.cols + col
 }
 
-// updateLoop periodically updates the LED display
+// updateLoop periodically updates the LED display and syncs record button state
 func (g *GUI) updateLoop() {
 	defer g.wg.Done()
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 
+	wasRecording := false
 	for {
 		select {
 		case <-g.ctx.Done():
-			// Context cancelled, stop updating
 			return
 		case <-ticker.C:
 			g.updateDisplay()
+			g.syncRecordButton(&wasRecording)
 		}
 	}
 }
@@ -499,4 +506,68 @@ func (g *GUI) flashLight(light *canvas.Rectangle, flashColor color.RGBA) {
 		g.flashTimers[light] = timer
 		g.timersMutex.Unlock()
 	}
+}
+
+// toggleRecording starts or stops recording.
+func (g *GUI) toggleRecording() {
+	if g.recorder == nil {
+		return
+	}
+
+	if g.recorder.IsRecording() {
+		// Stop recording off the UI thread to avoid blocking during encode
+		g.recordBtn.Disable()
+		go func() {
+			filename, err := g.recorder.Stop()
+			fyne.Do(func() {
+				g.recordBtn.Enable()
+				g.recordBtn.SetText("Record")
+				g.recordBtn.SetIcon(theme.MediaRecordIcon())
+				g.recordBtn.Importance = widget.MediumImportance
+				g.recordBtn.Refresh()
+
+				if err != nil {
+					dialog.ShowError(fmt.Errorf("Recording failed: %w", err), g.window)
+				} else if filename != "" {
+					dialog.ShowInformation("Recording Saved", fmt.Sprintf("Saved: %s", filename), g.window)
+				}
+			})
+		}()
+	} else {
+		if err := g.recorder.Start(); err != nil {
+			dialog.ShowError(fmt.Errorf("Cannot start recording: %w", err), g.window)
+			return
+		}
+		g.recordBtn.SetText("Stop")
+		g.recordBtn.SetIcon(theme.MediaStopIcon())
+		g.recordBtn.Importance = widget.DangerImportance
+		g.recordBtn.Refresh()
+	}
+}
+
+// syncRecordButton updates the record button to match the recorder's actual state.
+// This handles recording started/stopped via HTTP API or auto-stop on duration limit.
+func (g *GUI) syncRecordButton(wasRecording *bool) {
+	if g.recorder == nil || g.recordBtn == nil {
+		return
+	}
+
+	isRecording := g.recorder.IsRecording()
+	if isRecording == *wasRecording {
+		return
+	}
+	*wasRecording = isRecording
+
+	fyne.Do(func() {
+		if isRecording {
+			g.recordBtn.SetText("Stop")
+			g.recordBtn.SetIcon(theme.MediaStopIcon())
+			g.recordBtn.Importance = widget.DangerImportance
+		} else {
+			g.recordBtn.SetText("Record")
+			g.recordBtn.SetIcon(theme.MediaRecordIcon())
+			g.recordBtn.Importance = widget.MediumImportance
+		}
+		g.recordBtn.Refresh()
+	})
 }

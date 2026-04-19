@@ -19,7 +19,7 @@ func testParams(testApp fyne.App, s *state.LEDState, rows, cols int, wiring stri
 	return AppParams{
 		App:             testApp,
 		State:           s,
-		Config:          config.Config{Rows: rows, Cols: cols, Wiring: wiring, RecordFormat: "gif", RecordDuration: 24, RecordFPS: 10},
+		Config:          config.Config{Rows: rows, Cols: cols, Wiring: wiring, RecordFormat: "both", RecordDuration: 24, RecordFPS: 10},
 		OnSettingsOpen:  func() {},
 		OnSettingsClose: func(*config.Config) {},
 	}

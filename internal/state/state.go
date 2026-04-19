@@ -29,7 +29,7 @@ type LEDState struct {
 	rgbw            bool               // RGBW mode: W channel stored in color.RGBA.A field
 	lastLiveTime    time.Time          // Timestamp of last DDP packet received
 	liveTimeout     time.Duration      // How long to consider live after last packet
-	activityChannel chan ActivityEvent  // Channel for activity events
+	activityChannel chan ActivityEvent // Channel for activity events
 	ddpCount        atomic.Uint64      // Total DDP packets received
 	httpCount       atomic.Uint64      // Total HTTP requests handled
 	startTime       time.Time          // When the state was created (for uptime)

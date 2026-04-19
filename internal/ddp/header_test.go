@@ -458,7 +458,7 @@ func TestValidateHeader(t *testing.T) {
 				},
 				Sequence: 8,
 			},
-			lastPushSeq:  10,
+			lastPushSeq:   10,
 			expectedError: "late packet rejected",
 		},
 		{
@@ -506,7 +506,7 @@ func TestValidateHeader(t *testing.T) {
 				},
 				Sequence: 14,
 			},
-			lastPushSeq:  3,
+			lastPushSeq:   3,
 			expectedError: "late packet rejected",
 		},
 		{

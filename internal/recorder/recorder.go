@@ -25,13 +25,14 @@ type Options struct {
 
 // Recorder captures LED state frames and encodes them to GIF/MP4.
 type Recorder struct {
-	state     *state.LEDState
-	opts      Options
-	mu        sync.Mutex
-	recording bool
-	stopCh    chan struct{}
-	frames    []*image.Paletted
-	delays    []int // centiseconds per frame for GIF
+	state      *state.LEDState
+	opts       Options
+	mu         sync.Mutex
+	recording  bool
+	stopCh     chan struct{}
+	frames     []*image.Paletted
+	delays     []int // centiseconds per frame for GIF
+	OnComplete func(filename string, err error)
 }
 
 // New creates a Recorder.
@@ -43,7 +44,7 @@ func New(s *state.LEDState, opts Options) *Recorder {
 		opts.Duration = 24
 	}
 	if opts.Format == "" {
-		opts.Format = "gif"
+		opts.Format = "both"
 	}
 	return &Recorder{
 		state: s,
@@ -105,6 +106,18 @@ func (r *Recorder) Stop() (string, error) {
 	r.delays = nil
 	r.mu.Unlock()
 
+	return r.finalize(frames, delays, opts)
+}
+
+// IsRecording returns true if currently recording.
+func (r *Recorder) IsRecording() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.recording
+}
+
+// finalize encodes captured frames into output files.
+func (r *Recorder) finalize(frames []*image.Paletted, delays []int, opts Options) (string, error) {
 	if len(frames) == 0 {
 		return "", fmt.Errorf("no frames captured")
 	}
@@ -140,13 +153,6 @@ func (r *Recorder) Stop() (string, error) {
 	return primaryFile, nil
 }
 
-// IsRecording returns true if currently recording.
-func (r *Recorder) IsRecording() bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.recording
-}
-
 const ledPixelSize = 8 // each LED rendered as 8x8 pixels
 
 func (r *Recorder) captureLoop() {
@@ -170,13 +176,27 @@ func (r *Recorder) captureLoop() {
 			r.mu.Unlock()
 
 			if count >= maxFrames {
-				// Auto-stop after reaching duration limit
+				// Auto-stop: finalize recording in background
 				r.mu.Lock()
 				if r.recording {
 					close(r.stopCh)
 					r.recording = false
+					frames := r.frames
+					delays := r.delays
+					opts := r.opts
+					r.frames = nil
+					r.delays = nil
+					r.mu.Unlock()
+
+					go func() {
+						filename, err := r.finalize(frames, delays, opts)
+						if r.OnComplete != nil {
+							r.OnComplete(filename, err)
+						}
+					}()
+				} else {
+					r.mu.Unlock()
 				}
-				r.mu.Unlock()
 				return
 			}
 		}

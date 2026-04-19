@@ -25,14 +25,14 @@ import (
 
 // runtime serializes lifecycle transitions (start/stop/apply) behind a mutex.
 type runtime struct {
-	mu        sync.Mutex
-	cfg       config.Config
-	state     *state.LEDState
-	ddpServer *ddp.Server
-	apiServer *api.Server
-	recorder  *recorder.Recorder
-	guiApp    *gui.GUI
-	running   bool
+	mu         sync.Mutex
+	cfg        config.Config
+	state      *state.LEDState
+	ddpServer  *ddp.Server
+	apiServer  *api.Server
+	recorder   *recorder.Recorder
+	guiApp     *gui.GUI
+	running    bool
 	configPath string
 }
 

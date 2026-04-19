@@ -9,6 +9,6 @@ controls: false
 headless: false
 verbose: true
 rgbw: true
-record_format: gif
+record_format: both
 record_duration: 24
 record_fps: 10

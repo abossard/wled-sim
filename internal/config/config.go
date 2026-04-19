@@ -39,7 +39,7 @@ func Defaults() Config {
 		Headless:       false,
 		Verbose:        false,
 		RGBW:           false,
-		RecordFormat:   "gif",
+		RecordFormat:   "both",
 		RecordDuration: 24,
 		RecordFPS:      10,
 	}
