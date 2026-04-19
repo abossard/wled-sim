@@ -76,8 +76,10 @@ func TestFlashLight_RespectsContext(t *testing.T) {
 	ledState := state.NewLEDState(1, "#000000", false)
 	gui := NewApp(testParams(testApp, ledState, 1, 1, "row"))
 
-	// Replace the GUI's context with our cancelled one
+	// Stop goroutines before replacing context to avoid data race
+	gui.stop()
 	gui.ctx = ctx
+	gui.cancel = cancel
 
 	rect := canvas.NewRectangle(color.Black)
 

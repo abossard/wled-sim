@@ -442,9 +442,12 @@ func (g *GUI) flashLight(light *canvas.Rectangle, flashColor color.RGBA) {
 
 	// Use non-blocking fyne.Do to avoid deadlock during shutdown
 	// (close intercept runs on UI thread and waits for goroutines via wg.Wait,
-	// so goroutines must never block on the UI thread with DoAndWait)
+	// so goroutines must never block on the UI thread with DoAndWait).
+	// Mutex protects light.FillColor writes since Fyne test driver runs
+	// fyne.Do callbacks inline on the calling goroutine.
 	fyne.Do(func() {
-		// Double check context hasn't been cancelled
+		g.timersMutex.Lock()
+		defer g.timersMutex.Unlock()
 		select {
 		case <-g.ctx.Done():
 			return
@@ -468,12 +471,11 @@ func (g *GUI) flashLight(light *canvas.Rectangle, flashColor color.RGBA) {
 
 		// Use non-blocking fyne.Do to avoid deadlock during shutdown
 		fyne.Do(func() {
-			// Final context check before GUI update
+			g.timersMutex.Lock()
+			defer g.timersMutex.Unlock()
 			select {
 			case <-g.ctx.Done():
-				g.timersMutex.Lock()
 				delete(g.flashTimers, light)
-				g.timersMutex.Unlock()
 				return
 			default:
 			}
