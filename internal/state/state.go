@@ -26,6 +26,7 @@ type LEDState struct {
 	power           bool
 	brightness      int // 0-255
 	leds            []color.RGBA
+	pendingLeds     []color.RGBA       // DDP back-buffer for tear-free rendering
 	rgbw            bool               // RGBW mode: W channel stored in color.RGBA.A field
 	lastLiveTime    time.Time          // Timestamp of last DDP packet received
 	liveTimeout     time.Duration      // How long to consider live after last packet
@@ -39,14 +40,17 @@ type LEDState struct {
 // If rgbw is true, the W channel is stored in the A field of color.RGBA.
 func NewLEDState(n int, hex string, rgbw bool) *LEDState {
 	leds := make([]color.RGBA, n)
+	pendingLeds := make([]color.RGBA, n)
 	c := parseHex(hex, rgbw)
 	for i := range leds {
 		leds[i] = c
+		pendingLeds[i] = c
 	}
 	return &LEDState{
 		power:           true,
 		brightness:      255,
 		leds:            leds,
+		pendingLeds:     pendingLeds,
 		rgbw:            rgbw,
 		liveTimeout:     5 * time.Second,               // Consider live for 5 seconds after last packet
 		activityChannel: make(chan ActivityEvent, 100), // Buffered channel for activity events
@@ -114,6 +118,27 @@ func (s *LEDState) SetLED(i int, c color.RGBA) {
 	if i >= 0 && i < len(s.leds) {
 		s.leds[i] = c
 	}
+}
+
+// SetLEDRangePending writes a slice of colors to the back-buffer starting at index start.
+// Call CommitPending to atomically swap the back-buffer to the front-buffer.
+func (s *LEDState) SetLEDRangePending(start int, colors []color.RGBA) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, c := range colors {
+		idx := start + i
+		if idx >= 0 && idx < len(s.pendingLeds) {
+			s.pendingLeds[idx] = c
+		}
+	}
+}
+
+// CommitPending copies the back-buffer to the front-buffer atomically.
+// Called by the DDP server when a push packet is received.
+func (s *LEDState) CommitPending() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	copy(s.leds, s.pendingLeds)
 }
 
 func (s *LEDState) LEDs() []color.RGBA {
@@ -210,8 +235,10 @@ func (s *LEDState) Resize(n int, hex string, rgbw bool) {
 	defer s.mu.Unlock()
 	s.rgbw = rgbw
 	s.leds = make([]color.RGBA, n)
+	s.pendingLeds = make([]color.RGBA, n)
 	c := parseHex(hex, rgbw)
 	for i := range s.leds {
 		s.leds[i] = c
+		s.pendingLeds[i] = c
 	}
 }

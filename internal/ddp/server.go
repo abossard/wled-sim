@@ -82,15 +82,15 @@ func (s *Server) processPacket(header *DDPHeader, data []byte) error {
 	maxIndex := len(leds)
 	startIndex := int(header.DataOffset) / bytesPerPixel
 
-	pixelCount := 0
+	// Build a batch of LED colors, then write to the pending buffer in one call
+	colors := make([]color.RGBA, 0, len(payload)/bytesPerPixel)
 	for i := 0; i+bytesPerPixel-1 < len(payload); i += bytesPerPixel {
-		ledIndex := startIndex + (i / bytesPerPixel)
+		ledIndex := startIndex + len(colors)
 		if ledIndex >= maxIndex {
 			break
 		}
 		if bytesPerPixel == 4 {
-			// RGBW: store W in A field
-			s.state.SetLED(ledIndex, color.RGBA{
+			colors = append(colors, color.RGBA{
 				R: payload[i],
 				G: payload[i+1],
 				B: payload[i+2],
@@ -99,20 +99,21 @@ func (s *Server) processPacket(header *DDPHeader, data []byte) error {
 		} else {
 			a := uint8(255)
 			if s.state.IsRGBW() {
-				a = 0 // In RGBW mode, RGB-only data has W=0
+				a = 0
 			}
-			s.state.SetLED(ledIndex, color.RGBA{
+			colors = append(colors, color.RGBA{
 				R: payload[i],
 				G: payload[i+1],
 				B: payload[i+2],
 				A: a,
 			})
 		}
-		pixelCount++
 	}
 
+	s.state.SetLEDRangePending(startIndex, colors)
+
 	if s.verbose {
-		log.Printf("[DDP] Updated %d LEDs starting at index %d", pixelCount, startIndex)
+		log.Printf("[DDP] Buffered %d LEDs starting at index %d", len(colors), startIndex)
 	}
 
 	return nil
@@ -178,10 +179,11 @@ func (s *Server) Start() error {
 				}
 
 				// PUSH-aware rendering matching real WLED v16 behavior:
-				// Only render on PUSH, or if we've never seen a PUSH packet.
+				// Only commit the back-buffer on PUSH, or if we've never seen a PUSH packet.
 				push := header.Push
 				s.ddpSeenPush = s.ddpSeenPush || push
 				if !s.ddpSeenPush || push {
+					s.state.CommitPending()
 					s.state.SetLive()
 					sn := header.Sequence & 0x0F
 					if sn != 0 {
