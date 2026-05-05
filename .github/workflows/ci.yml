@@ -34,12 +34,11 @@ jobs:
             goarch: amd64
             binary: wled-sim-linux-amd64
             deps: sudo apt-get update && sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev
-          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
             goos: linux
             goarch: arm64
             binary: wled-sim-linux-arm64
-            cc: aarch64-linux-gnu-gcc
-            deps: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu libgl1-mesa-dev xorg-dev
+            deps: sudo apt-get update && sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev
           - os: macos-latest
             goos: darwin
             goarch: amd64
