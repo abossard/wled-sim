@@ -14,23 +14,29 @@ GOMOD=$(GOCMD) mod
 # Build directory
 BUILD_DIR=build
 
+# Version metadata injected via -ldflags
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS_VERSION=-X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)
+
 # Default target
 .PHONY: all
 all: build
 
-# Build the binary
+# Build the binary (development build with version info)
 .PHONY: build
 build:
-	@echo "Building $(BINARY_NAME)..."
+	@echo "Building $(BINARY_NAME) ($(VERSION))..."
 	@mkdir -p $(BUILD_DIR)
-	$(GOBUILD) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd
+	$(GOBUILD) -ldflags="$(LDFLAGS_VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd
 
-# Build with version info
+# Build with stripped symbols and reproducible paths
 .PHONY: build-release
 build-release:
-	@echo "Building $(BINARY_NAME) with version info..."
+	@echo "Building release $(BINARY_NAME) ($(VERSION))..."
 	@mkdir -p $(BUILD_DIR)
-	$(GOBUILD) -ldflags="-s -w" -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd
+	$(GOBUILD) -trimpath -ldflags="-s -w $(LDFLAGS_VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd
 
 # Generate the WLED Client
 .PHONY: gen

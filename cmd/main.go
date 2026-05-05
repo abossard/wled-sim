@@ -23,6 +23,13 @@ import (
 	"fyne.io/fyne/v2/app"
 )
 
+// Build-time metadata. Overridden via -ldflags="-X main.version=... -X main.commit=... -X main.date=...".
+var (
+	version = "dev"
+	commit  = "unknown"
+	date    = "unknown"
+)
+
 // runtime serializes lifecycle transitions (start/stop/apply) behind a mutex.
 type runtime struct {
 	mu         sync.Mutex
@@ -52,6 +59,7 @@ func (rt *runtime) start() error {
 		Rows:     rt.cfg.Rows,
 		Cols:     rt.cfg.Cols,
 		Wiring:   rt.cfg.Wiring,
+		Dir:      rt.cfg.RecordDir,
 	})
 	rt.apiServer = api.NewServer(rt.cfg.HTTPAddress, rt.state, rt.cfg.DDPPort, rt.cfg.Name, rt.cfg.Rows, rt.cfg.Cols, rt.recorder)
 
@@ -100,6 +108,12 @@ func (rt *runtime) applyConfig(newCfg config.Config) error {
 	defer rt.mu.Unlock()
 
 	oldCfg := rt.cfg
+	if newCfg.RecordFormat == "" {
+		newCfg.RecordFormat = oldCfg.RecordFormat
+	}
+	if newCfg.RecordDir == "" {
+		newCfg.RecordDir = oldCfg.RecordDir
+	}
 	rt.cfg = newCfg
 
 	// Check if grid dimensions changed
@@ -124,6 +138,7 @@ func (rt *runtime) applyConfig(newCfg config.Config) error {
 		Rows:     newCfg.Rows,
 		Cols:     newCfg.Cols,
 		Wiring:   newCfg.Wiring,
+		Dir:      newCfg.RecordDir,
 	})
 
 	// Save config
@@ -163,15 +178,47 @@ func main() {
 	flag.BoolVar(&cfg.Verbose, "v", defaults.Verbose, "Verbose logging")
 	flag.BoolVar(&cfg.RGBW, "rgbw", defaults.RGBW, "Enable experimental RGBW (4-channel) LED support")
 
-	configFile := flag.String("config", "config.yaml", "Configuration file path")
+	configFile := flag.String("config", "", "Configuration file path (defaults to ./config.yaml if present, else OS app config dir)")
+	showVersion := flag.Bool("version", false, "Print version information and exit")
+	printConfig := flag.Bool("print-config", false, "Print effective configuration as YAML and exit")
+	writeDefault := flag.Bool("write-default-config", false, "Write default configuration to the resolved config path and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("wled-sim %s (commit %s, built %s)\n", version, commit, date)
+		return
+	}
 
 	// Save CLI values before loading config file
 	cliValues := cfg
 
+	// Resolve config path: explicit --config wins; otherwise prefer ./config.yaml,
+	// falling back to OS app config dir.
+	configPath := *configFile
+	configExplicit := configPath != ""
+	if !configExplicit {
+		resolved, err := config.ResolveConfigPath()
+		if err != nil {
+			log.Fatalf("Could not resolve default config path: %v", err)
+		}
+		configPath = resolved
+	}
+
+	// --write-default-config writes defaults to the resolved path and exits.
+	if *writeDefault {
+		def := config.Defaults()
+		if err := def.Save(configPath); err != nil {
+			log.Fatalf("Failed to write default config to %s: %v", configPath, err)
+		}
+		fmt.Printf("Wrote default config to %s\n", configPath)
+		return
+	}
+
 	// Load config file if it exists
-	if fileCfg, err := config.Load(*configFile); err == nil {
+	if fileCfg, err := config.Load(configPath); err == nil {
 		cfg = fileCfg
+	} else if !os.IsNotExist(err) {
+		log.Fatalf("Failed to load config %s: %v", configPath, err)
 	}
 
 	// Apply recording defaults if not set in file
@@ -200,6 +247,25 @@ func main() {
 		}
 	})
 
+	// Resolve recordings directory: explicit value in config wins; otherwise OS default.
+	if cfg.RecordDir == "" {
+		dir, err := config.DefaultRecordDir()
+		if err != nil {
+			log.Fatalf("Could not resolve default recordings dir: %v", err)
+		}
+		cfg.RecordDir = dir
+	}
+
+	// --print-config prints the effective config as YAML and exits.
+	if *printConfig {
+		data, err := cfg.Marshal()
+		if err != nil {
+			log.Fatalf("Failed to marshal config: %v", err)
+		}
+		os.Stdout.Write(data)
+		return
+	}
+
 	// Validate wiring pattern
 	if cfg.Wiring != "row" && cfg.Wiring != "col" {
 		log.Fatalf("Invalid wiring pattern '%s'. Must be 'row' or 'col'", cfg.Wiring)
@@ -212,13 +278,16 @@ func main() {
 		log.SetFlags(log.LstdFlags | log.Lshortfile)
 	}
 
+	fmt.Printf("wled-sim %s (commit %s, built %s)\n", version, commit, date)
+	fmt.Printf("Config path: %s\n", configPath)
+	fmt.Printf("Recordings dir: %s\n", cfg.RecordDir)
 	fmt.Printf("WLED Simulator starting with %dx%d LED matrix (%d total LEDs, %s-major wiring)\n",
 		cfg.Rows, cfg.Cols, totalLEDs, cfg.Wiring)
 	if cfg.RGBW {
 		fmt.Println("RGBW mode enabled (experimental)")
 	}
-	fmt.Printf("HTTP API on %s\n", cfg.HTTPAddress)
-	fmt.Printf("DDP listening on port %d\n", cfg.DDPPort)
+	fmt.Printf("HTTP API listening on %s\n", cfg.HTTPAddress)
+	fmt.Printf("DDP listening on udp/:%d\n", cfg.DDPPort)
 
 	// Create recorder
 	rec := recorder.New(ledState, recorder.Options{
@@ -228,6 +297,7 @@ func main() {
 		Rows:     cfg.Rows,
 		Cols:     cfg.Cols,
 		Wiring:   cfg.Wiring,
+		Dir:      cfg.RecordDir,
 	})
 
 	// Create servers
@@ -242,7 +312,7 @@ func main() {
 		apiServer:  apiServer,
 		recorder:   rec,
 		running:    false,
-		configPath: *configFile,
+		configPath: configPath,
 	}
 
 	// Start servers

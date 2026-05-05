@@ -391,20 +391,27 @@ func (s *Server) handleRecord(c *gin.Context) {
 }
 
 func (s *Server) handleListRecordings(c *gin.Context) {
-	cwd, err := os.Getwd()
+	dir := s.recorder.Dir()
+	if dir == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		dir = cwd
+	}
+	files, err := recorder.ListRecordings(dir)
 	if err != nil {
+		if os.IsNotExist(err) {
+			c.JSON(http.StatusOK, gin.H{"recordings": []string{}, "dir": dir})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	files, err := recorder.ListRecordings(cwd)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	// Return absolute paths for download
-	var paths []string
+	paths := make([]string, 0, len(files))
 	for _, f := range files {
 		paths = append(paths, filepath.Base(f))
 	}
-	c.JSON(http.StatusOK, gin.H{"recordings": paths})
+	c.JSON(http.StatusOK, gin.H{"recordings": paths, "dir": dir})
 }

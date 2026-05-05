@@ -29,6 +29,7 @@ type Sidebar struct {
 	rgbwCheck      *widget.Check
 	recDurEntry    *widget.Entry
 	recFPSEntry    *widget.Entry
+	currentCfg     config.Config
 
 	onApply  func(config.Config)
 	onCancel func()
@@ -40,8 +41,9 @@ func NewSidebar(
 	onCancel func(),
 ) *Sidebar {
 	sb := &Sidebar{
-		onApply:  onApply,
-		onCancel: onCancel,
+		currentCfg: cfg,
+		onApply:    onApply,
+		onCancel:   onCancel,
 	}
 
 	sb.buildConfigForm(cfg)
@@ -132,6 +134,10 @@ func (sb *Sidebar) readConfig() config.Config {
 	ddpPort, _ := strconv.Atoi(sb.ddpPortEntry.Text)
 	recDur, _ := strconv.Atoi(sb.recDurEntry.Text)
 	recFPS, _ := strconv.Atoi(sb.recFPSEntry.Text)
+	recordFormat := sb.currentCfg.RecordFormat
+	if recordFormat == "" {
+		recordFormat = "both"
+	}
 
 	return config.Config{
 		Rows:           rows,
@@ -141,15 +147,19 @@ func (sb *Sidebar) readConfig() config.Config {
 		DDPPort:        ddpPort,
 		InitColor:      sb.initColorEntry.Text,
 		Name:           sb.nameEntry.Text,
+		Controls:       sb.currentCfg.Controls,
+		Headless:       sb.currentCfg.Headless,
 		Verbose:        sb.verboseCheck.Checked,
 		RGBW:           sb.rgbwCheck.Checked,
-		RecordFormat:   "both",
+		RecordFormat:   recordFormat,
 		RecordDuration: recDur,
 		RecordFPS:      recFPS,
+		RecordDir:      sb.currentCfg.RecordDir,
 	}
 }
 
 func (sb *Sidebar) UpdateConfig(cfg config.Config) {
+	sb.currentCfg = cfg
 	sb.rowsEntry.SetText(strconv.Itoa(cfg.Rows))
 	sb.colsEntry.SetText(strconv.Itoa(cfg.Cols))
 	sb.wiringSelect.SetSelected(cfg.Wiring)

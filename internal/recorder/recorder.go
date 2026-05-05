@@ -7,6 +7,7 @@ import (
 	"image/gif"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -21,6 +22,7 @@ type Options struct {
 	Rows     int
 	Cols     int
 	Wiring   string // "row" or "col"
+	Dir      string // output directory for recording files (created on demand)
 }
 
 // Recorder captures LED state frames and encodes them to GIF/MP4.
@@ -71,6 +73,16 @@ func (r *Recorder) UpdateOptions(opts Options) {
 	r.opts.Rows = opts.Rows
 	r.opts.Cols = opts.Cols
 	r.opts.Wiring = opts.Wiring
+	if opts.Dir != "" {
+		r.opts.Dir = opts.Dir
+	}
+}
+
+// Dir returns the configured output directory for recordings.
+func (r *Recorder) Dir() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.opts.Dir
 }
 
 // Start begins recording frames. Returns an error if already recording.
@@ -122,12 +134,18 @@ func (r *Recorder) finalize(frames []*image.Paletted, delays []int, opts Options
 		return "", fmt.Errorf("no frames captured")
 	}
 
+	if opts.Dir != "" {
+		if err := os.MkdirAll(opts.Dir, 0755); err != nil {
+			return "", fmt.Errorf("create record dir: %w", err)
+		}
+	}
+
 	timestamp := time.Now().Format("20060102-150405")
 	var primaryFile string
 
 	// GIF output
 	if opts.Format == "gif" || opts.Format == "both" {
-		filename := fmt.Sprintf("recording-%s.gif", timestamp)
+		filename := filepath.Join(opts.Dir, fmt.Sprintf("recording-%s.gif", timestamp))
 		if err := encodeGIF(filename, frames, delays); err != nil {
 			return "", fmt.Errorf("GIF encode: %w", err)
 		}
@@ -136,7 +154,7 @@ func (r *Recorder) finalize(frames []*image.Paletted, delays []int, opts Options
 
 	// MP4 output via ffmpeg
 	if opts.Format == "mp4" || opts.Format == "both" {
-		filename := fmt.Sprintf("recording-%s.mp4", timestamp)
+		filename := filepath.Join(opts.Dir, fmt.Sprintf("recording-%s.mp4", timestamp))
 		if err := encodeMP4(filename, frames, opts); err != nil {
 			if primaryFile == "" {
 				return "", fmt.Errorf("MP4 encode: %w", err)

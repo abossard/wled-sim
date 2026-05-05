@@ -1,2 +1,10 @@
 build
 wled-sim
+
+# Generated recordings
+recording-*.gif
+recording-*.mp4
+
+# Test coverage outputs
+coverage.out
+coverage.html

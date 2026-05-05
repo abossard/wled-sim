@@ -33,6 +33,39 @@ go run ./cmd -rows 10 -cols 3 -http :9090 -init "#00FF00"
 
 Open `http://localhost:9090/json` in your browser or point your WLED mobile app at the same address to test live control.
 
+## Install from GitHub Releases
+
+Pre-built UI binaries are published on the [Releases page](https://github.com/abossard/wled-sim/releases) for each `v*` tag.
+
+Available archives:
+
+| Platform        | Archive                                          |
+|-----------------|--------------------------------------------------|
+| Linux amd64     | `wled-sim-<version>-linux-amd64.tar.gz`          |
+| Linux arm64     | `wled-sim-<version>-linux-arm64.tar.gz`          |
+| macOS Intel     | `wled-sim-<version>-darwin-amd64.zip`            |
+| macOS Apple Si. | `wled-sim-<version>-darwin-arm64.zip`            |
+| Windows amd64   | `wled-sim-<version>-windows-amd64.zip`           |
+
+Each archive bundles the `wled-sim` binary, `README.md`, `LICENSE`, and `config.example.yaml`. A `SHA256SUMS` file plus per-archive `.sha256` files are attached to every release.
+
+Verify and extract (Linux/macOS):
+
+```bash
+shasum -a 256 -c wled-sim-<version>-<platform>.tar.gz.sha256
+tar -xzf wled-sim-<version>-<platform>.tar.gz
+cd wled-sim-<version>-<platform>
+./wled-sim
+```
+
+On Windows, unzip the archive and run `wled-sim.exe`.
+
+### First-run notes
+
+- **macOS** binaries are unsigned. On first launch, right-click the binary → **Open**, or clear the quarantine flag: `xattr -d com.apple.quarantine wled-sim`.
+- **Windows SmartScreen** may warn on first run; choose **More info → Run anyway**.
+- **Linux** requires an X11 or Wayland session and OpenGL libraries (`libgl1`, `libx11`, `libxcursor`, `libxrandr`, `libxinerama`, `libxi`). On Debian/Ubuntu: `sudo apt-get install libgl1 libx11-6 libxcursor1 libxrandr2 libxinerama1 libxi6`.
+
 ## Configuration Flags
 
 | Flag        | Default | Description                          |

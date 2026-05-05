@@ -1,10 +1,14 @@
 package config
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
+
+const appDirName = "wled-sim"
 
 // Config holds application configuration.
 type Config struct {
@@ -24,6 +28,7 @@ type Config struct {
 	RecordFormat   string `yaml:"record_format"`   // "gif", "mp4", "both"
 	RecordDuration int    `yaml:"record_duration"` // seconds, default 24
 	RecordFPS      int    `yaml:"record_fps"`      // frames per second, default 10
+	RecordDir      string `yaml:"record_dir"`      // directory to write recordings into; empty = OS default
 }
 
 // Defaults returns a Config with sensible default values.
@@ -58,11 +63,58 @@ func Load(path string) (Config, error) {
 	return cfg, nil
 }
 
-// Save writes the Config as YAML to the given path.
+// Save writes the Config as YAML to the given path. Parent directories are
+// created as needed.
 func (c Config) Save(path string) error {
 	data, err := yaml.Marshal(c)
 	if err != nil {
 		return err
 	}
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return err
+		}
+	}
 	return os.WriteFile(path, data, 0644)
+}
+
+// Marshal returns the YAML representation of the config.
+func (c Config) Marshal() ([]byte, error) {
+	return yaml.Marshal(c)
+}
+
+// DefaultConfigPath returns the OS-specific default config file path,
+// e.g. ~/Library/Application Support/wled-sim/config.yaml on macOS.
+func DefaultConfigPath() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve user config dir: %w", err)
+	}
+	return filepath.Join(dir, appDirName, "config.yaml"), nil
+}
+
+// ResolveConfigPath picks a config path when the user did not pass --config:
+// prefer ./config.yaml if it exists (backward compatibility), otherwise the
+// OS app config dir. The returned path may not exist yet.
+func ResolveConfigPath() (string, error) {
+	if _, err := os.Stat("config.yaml"); err == nil {
+		abs, err := filepath.Abs("config.yaml")
+		if err != nil {
+			return "config.yaml", nil
+		}
+		return abs, nil
+	}
+	return DefaultConfigPath()
+}
+
+// DefaultRecordDir returns the OS-specific default directory for recordings,
+// e.g. ~/Library/Application Support/wled-sim/recordings on macOS. The
+// directory is not created here; callers that intend to write should call
+// os.MkdirAll on the returned path.
+func DefaultRecordDir() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve user config dir: %w", err)
+	}
+	return filepath.Join(dir, appDirName, "recordings"), nil
 }

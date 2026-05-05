@@ -1,0 +1,15 @@
+# Example WLED Simulator configuration.
+# Copy to config.yaml and adjust to your needs. CLI flags override these.
+rows: 10
+cols: 10
+wiring: row
+http_address: ":8080"
+ddp_port: 4048
+init_color: "#000000"
+name: "WLED Simulator"
+controls: true
+verbose: false
+rgbw: false
+record_format: gif
+record_duration: 10
+record_fps: 10
